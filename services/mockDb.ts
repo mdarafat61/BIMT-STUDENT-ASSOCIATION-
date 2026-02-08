@@ -36,9 +36,9 @@ class SupabaseService {
 
   private async restoreSession() {
     const { data: { session } } = await supabase.auth.getSession();
+    const token = localStorage.getItem('cc_admin_token');
+
     if (session) {
-       // In a real app, fetch profile details from a 'profiles' table
-       // For this integration, we mock the admin details based on auth presence
        this.currentUser = {
            id: session.user.id,
            username: session.user.email?.split('@')[0] || 'admin',
@@ -49,19 +49,38 @@ class SupabaseService {
            activityScore: 100,
            token: session.access_token
        };
+    } else if (token === 'mock_token_admin') {
+        // Mock Session Restoration - In a real app this would validate the token
+        // For this demo, we assume Ahamed Alex is the main admin if the mock token exists
+        const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
+        if (data) {
+             this.currentUser = {
+               id: data.id,
+               username: data.username,
+               fullName: data.fullName,
+               role: data.role as UserRole,
+               title: data.title,
+               avatarUrl: data.avatarUrl,
+               activityScore: data.activityScore,
+               token: 'mock_token_admin',
+               linkedStudentSlug: data.linkedStudentSlug
+            };
+        }
     }
   }
 
   // --- Helpers ---
   private async logAction(action: string, target: string, details?: string) {
     if (!this.currentUser) return;
-    await supabase.from('audit_logs').insert({
-        action,
-        actor: this.currentUser.username,
-        target,
-        details,
-        timestamp: new Date().toISOString()
-    });
+    try {
+        await supabase.from('audit_logs').insert({
+            action,
+            actor: this.currentUser.username,
+            target,
+            details,
+            timestamp: new Date().toISOString()
+        });
+    } catch(e) { console.error("Log failed", e); }
   }
 
   // --- File Upload Helper ---
@@ -85,7 +104,10 @@ class SupabaseService {
           .from('public')
           .upload(`${folder}/${fileName}`, fileToUpload);
 
-      if (error) throw error;
+      if (error) {
+          console.error("Storage upload error:", error);
+          throw new Error(`Upload failed: ${error.message}`);
+      }
       
       const { data: { publicUrl } } = supabase.storage
           .from('public')
@@ -98,25 +120,67 @@ class SupabaseService {
       return this.currentUser;
   }
 
-  // --- Admin User Management ---
+  // --- Admin User / Team Management ---
   async getAdminUsers(): Promise<AdminUser[]> {
-      // Since we don't have a full profiles table set up in the SQL provided, 
-      // return the current session user as a list or a mock list.
-      if (this.currentUser) return [this.currentUser];
+      // Now fetches from real table
+      const { data } = await supabase.from('team_members').select('*').order('activityScore', {ascending: false});
+      
+      if (data) {
+          return data.map(u => ({
+              id: u.id,
+              username: u.username || 'user',
+              fullName: u.fullName,
+              title: u.title,
+              role: u.role as UserRole,
+              avatarUrl: u.avatarUrl,
+              activityScore: u.activityScore,
+              linkedStudentSlug: u.linkedStudentSlug
+          }));
+      }
       return [];
   }
 
   async createAdminUser(user: any): Promise<void> {
-      // Needs Supabase Admin Auth API (service_role) to create users programmatically
-      console.warn("User creation requires Supabase Admin API");
+      if (user.avatarUrl && user.avatarUrl.startsWith('data:')) {
+          user.avatarUrl = await this.uploadFile(user.avatarUrl, 'avatars');
+      }
+      
+      const { error } = await supabase.from('team_members').insert({
+          fullName: user.fullName,
+          username: user.username,
+          title: user.title,
+          role: user.role,
+          avatarUrl: user.avatarUrl,
+          activityScore: 0
+      });
+      
+      if (error) throw new Error(error.message);
+      await this.logAction('Created Staff', user.fullName);
   }
 
   async deleteAdminUser(id: string): Promise<void> {
-      console.warn("User deletion requires Supabase Admin API");
+      await supabase.from('team_members').delete().eq('id', id);
+      await this.logAction('Deleted Staff', id);
   }
 
   async updateAdminProfile(id: string, updates: Partial<AdminUser>): Promise<void> {
-     // Would update 'profiles' table
+     if (updates.avatarUrl && updates.avatarUrl.startsWith('data:')) {
+         updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
+     }
+
+     const { error } = await supabase.from('team_members').update({
+         fullName: updates.fullName,
+         title: updates.title,
+         avatarUrl: updates.avatarUrl,
+         linkedStudentSlug: updates.linkedStudentSlug
+     }).eq('id', id);
+
+     if(error) throw new Error(error.message);
+     
+     // Update local session
+     if (this.currentUser && this.currentUser.id === id) {
+         this.currentUser = { ...this.currentUser, ...updates };
+     }
   }
 
   // --- Student Management ---
@@ -130,7 +194,10 @@ class SupabaseService {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (error) {
+        console.error("Fetch students error:", error);
+        return [];
+    }
     return data as Student[];
   }
 
@@ -160,7 +227,6 @@ class SupabaseService {
   }
 
   async createNotice(notice: Omit<Notice, 'id' | 'postedAt'>): Promise<void> {
-    // If attachment is base64, upload it first
     let attachmentUrl = notice.attachmentUrl;
     if (attachmentUrl && attachmentUrl.startsWith('data:')) {
         attachmentUrl = await this.uploadFile(attachmentUrl, 'notices');
@@ -227,7 +293,6 @@ class SupabaseService {
   }
 
   async updateSiteConfig(config: SiteConfig): Promise<void> {
-      // Handle logo upload if it changed (base64 check)
       let logoUrl = config.logoUrl;
       if (logoUrl && logoUrl.startsWith('data:')) {
           logoUrl = await this.uploadFile(logoUrl, 'assets');
@@ -248,9 +313,9 @@ class SupabaseService {
   }
 
   async createSubmission(submission: any): Promise<void> {
-    // Upload files inside content object if they exist
     const content = { ...submission.content };
     
+    // Process File Uploads first
     if (content.avatarUrl?.startsWith('data:')) {
         content.avatarUrl = await this.uploadFile(content.avatarUrl, 'avatars');
     }
@@ -269,7 +334,11 @@ class SupabaseService {
         content.galleryImages = newGallery;
     }
 
-    await supabase.from('submissions').insert({ ...submission, content });
+    const { error } = await supabase.from('submissions').insert({ ...submission, content });
+    if (error) {
+        console.error("Submission insert error", error);
+        throw new Error(error.message);
+    }
   }
 
   async updateSubmissionStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
@@ -303,29 +372,47 @@ class SupabaseService {
 
   // --- Auth ---
   async login(password: string): Promise<AdminUser | null> {
-      // Supabase Auth
+      // 1. Try Supabase Auth (If configured)
       const { data, error } = await supabase.auth.signInWithPassword({
-          email: 'admin@bimt.edu', // Hardcoded email for this simple migration, password matches user input
+          email: 'admin@bimt.edu',
           password: password
       });
 
-      if (error || !data.session) {
-          console.error("Auth error", error);
-          return null;
+      if (data.session) {
+          this.currentUser = {
+               id: data.user.id,
+               username: 'admin',
+               fullName: 'System Administrator',
+               role: UserRole.SUPER_ADMIN,
+               title: 'Head of Operations',
+               avatarUrl: 'https://via.placeholder.com/150',
+               activityScore: 100,
+               token: data.session.access_token
+          };
+          return this.currentUser;
       }
 
-      this.currentUser = {
-           id: data.user.id,
-           username: 'admin',
-           fullName: 'System Administrator',
-           role: UserRole.SUPER_ADMIN,
-           title: 'Head of Operations',
-           avatarUrl: 'https://via.placeholder.com/150',
-           activityScore: 0,
-           token: data.session.access_token
-      };
+      // 2. Demo Auth: Use 'admin123' to log in as Ahamed Alex (Super Admin)
+      if (password === 'admin123') {
+          // Fetch Ahamed Alex from the DB to be the session user
+          const { data: userData } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
+          
+          if (userData) {
+              this.currentUser = {
+                   id: userData.id,
+                   username: userData.username,
+                   fullName: userData.fullName,
+                   role: userData.role as UserRole,
+                   title: userData.title,
+                   avatarUrl: userData.avatarUrl,
+                   activityScore: userData.activityScore,
+                   token: 'mock_token_admin'
+              };
+              return this.currentUser;
+          }
+      }
       
-      return this.currentUser;
+      return null;
   }
 
   // --- Public Getters (Rest) ---

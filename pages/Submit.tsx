@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload } from 'lucide-react';
+import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload, AlertCircle } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { Department, SocialLink, Achievement } from '../types';
@@ -10,6 +10,7 @@ const Submit: React.FC = () => {
   const [submissionType, setSubmissionType] = useState<'biography' | 'resource'>('biography');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Form State
   const [basicInfo, setBasicInfo] = useState({
@@ -61,7 +62,7 @@ const Submit: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Basic size check (5MB limit for local storage sanity)
+    // Basic size check (5MB limit)
     if (file.size > 5 * 1024 * 1024) {
       alert("File is too large. Please select a file under 5MB.");
       return;
@@ -90,36 +91,43 @@ const Submit: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError(null);
 
-    // Clean data
-    const cleanGallery = media.galleryImages.filter(img => img.trim() !== '');
-    const cleanSocials = socials.filter(s => s.url.trim() !== '');
-    const cleanAchievements = achievements.filter(a => a.title?.trim() !== '') as Achievement[];
+    try {
+        // Clean data
+        const cleanGallery = media.galleryImages.filter(img => img.trim() !== '');
+        const cleanSocials = socials.filter(s => s.url.trim() !== '');
+        const cleanAchievements = achievements.filter(a => a.title?.trim() !== '') as Achievement[];
 
-    const submissionContent = submissionType === 'resource' 
-      ? { 
-          title: basicInfo.resourceTitle, 
-          description: basicInfo.resourceDesc,
-          downloadUrl: media.resourceFile // Using base64 as download link
-        }
-      : { 
-          bio: basicInfo.bio,
-          avatarUrl: media.avatarUrl,
-          galleryImages: cleanGallery,
-          socialLinks: cleanSocials,
-          achievements: cleanAchievements,
-          contactEmail: basicInfo.email
-        };
+        const submissionContent = submissionType === 'resource' 
+          ? { 
+              title: basicInfo.resourceTitle, 
+              description: basicInfo.resourceDesc,
+              downloadUrl: media.resourceFile // Using base64 as download link
+            }
+          : { 
+              bio: basicInfo.bio,
+              avatarUrl: media.avatarUrl,
+              galleryImages: cleanGallery,
+              socialLinks: cleanSocials,
+              achievements: cleanAchievements,
+              contactEmail: basicInfo.email
+            };
 
-    await api.createSubmission({
-      studentName: basicInfo.fullName,
-      department: basicInfo.department,
-      type: submissionType,
-      content: submissionContent
-    });
+        await api.createSubmission({
+          studentName: basicInfo.fullName,
+          department: basicInfo.department,
+          type: submissionType,
+          content: submissionContent
+        });
 
-    setIsSubmitting(false);
-    setIsSuccess(true);
+        setIsSuccess(true);
+    } catch (err: any) {
+        console.error("Submission error:", err);
+        setError(err.message || "An error occurred during submission. Please check your connection or contact admin.");
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {
@@ -166,6 +174,16 @@ const Submit: React.FC = () => {
              Share Resource
            </button>
         </div>
+
+        {error && (
+            <div className="mx-6 mt-6 p-4 bg-red-50 border border-red-200 rounded-md flex items-start text-red-700 text-sm">
+                <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
+                <div>
+                    <p className="font-bold">Submission Failed</p>
+                    <p>{error.includes('row-level security') ? "Database policy violation. The administrator needs to run the setup SQL script." : error}</p>
+                </div>
+            </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
             
