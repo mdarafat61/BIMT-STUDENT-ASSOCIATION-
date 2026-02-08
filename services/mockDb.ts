@@ -29,43 +29,66 @@ const dataURLtoBlob = (dataurl: string) => {
 
 class SupabaseService {
   private currentUser: AdminUser | null = null;
+  private sessionPromise: Promise<void> | null = null;
 
   constructor() {
-    this.restoreSession();
+    this.sessionPromise = this.restoreSession();
   }
 
-  private async restoreSession() {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = localStorage.getItem('cc_admin_token');
+  // Changed to public so pages can await it
+  public async restoreSession() {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = localStorage.getItem('cc_admin_token');
 
-    if (session) {
-       this.currentUser = {
-           id: session.user.id,
-           username: session.user.email?.split('@')[0] || 'admin',
-           fullName: 'Admin User',
-           role: UserRole.SUPER_ADMIN,
-           title: 'Administrator',
-           avatarUrl: 'https://via.placeholder.com/150',
-           activityScore: 100,
-           token: session.access_token
-       };
-    } else if (token === 'mock_token_admin') {
-        // Mock Session Restoration - In a real app this would validate the token
-        // For this demo, we assume Ahamed Alex is the main admin if the mock token exists
-        const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
-        if (data) {
-             this.currentUser = {
-               id: data.id,
-               username: data.username,
-               fullName: data.fullName,
-               role: data.role as UserRole,
-               title: data.title,
-               avatarUrl: data.avatarUrl,
-               activityScore: data.activityScore,
-               token: 'mock_token_admin',
-               linkedStudentSlug: data.linkedStudentSlug
-            };
+        if (session) {
+           this.currentUser = {
+               id: session.user.id,
+               username: session.user.email?.split('@')[0] || 'admin',
+               fullName: 'Admin User',
+               role: UserRole.SUPER_ADMIN,
+               title: 'Administrator',
+               avatarUrl: 'https://via.placeholder.com/150',
+               activityScore: 100,
+               token: session.access_token
+           };
+        } else if (token === 'mock_token_admin') {
+            // Mock Session Restoration
+            // 1. Try DB
+            try {
+                const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
+                
+                if (data) {
+                     this.currentUser = {
+                       id: data.id,
+                       username: data.username,
+                       fullName: data.fullName,
+                       role: data.role as UserRole,
+                       title: data.title,
+                       avatarUrl: data.avatarUrl,
+                       activityScore: data.activityScore,
+                       token: 'mock_token_admin',
+                       linkedStudentSlug: data.linkedStudentSlug
+                    };
+                } else {
+                    throw new Error("No data found");
+                }
+            } catch (err) {
+                // 2. Fallback Session if DB is empty or fails
+                this.currentUser = {
+                   id: 'fallback-admin-id',
+                   username: 'alex',
+                   fullName: 'Ahamed Alex',
+                   role: UserRole.SUPER_ADMIN,
+                   title: 'Head of Operations',
+                   avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
+                   activityScore: 1500,
+                   token: 'mock_token_admin'
+                };
+            }
         }
+    } catch (e) {
+        console.error("Session restore failed", e);
     }
   }
 
@@ -122,10 +145,9 @@ class SupabaseService {
 
   // --- Admin User / Team Management ---
   async getAdminUsers(): Promise<AdminUser[]> {
-      // Now fetches from real table
       const { data } = await supabase.from('team_members').select('*').order('activityScore', {ascending: false});
       
-      if (data) {
+      if (data && data.length > 0) {
           return data.map(u => ({
               id: u.id,
               username: u.username || 'user',
@@ -137,6 +159,9 @@ class SupabaseService {
               linkedStudentSlug: u.linkedStudentSlug
           }));
       }
+      
+      // Fallback if DB empty
+      if (this.currentUser) return [this.currentUser];
       return [];
   }
 
@@ -166,6 +191,12 @@ class SupabaseService {
   async updateAdminProfile(id: string, updates: Partial<AdminUser>): Promise<void> {
      if (updates.avatarUrl && updates.avatarUrl.startsWith('data:')) {
          updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
+     }
+
+     // If id is 'fallback-admin-id', we can't update DB, just local
+     if (id === 'fallback-admin-id') {
+        if (this.currentUser) this.currentUser = { ...this.currentUser, ...updates };
+        return;
      }
 
      const { error } = await supabase.from('team_members').update({
@@ -371,17 +402,39 @@ class SupabaseService {
   }
 
   // --- Auth ---
-  async login(password: string): Promise<AdminUser | null> {
-      // 1. Try Supabase Auth (If configured)
-      const { data, error } = await supabase.auth.signInWithPassword({
-          email: 'admin@bimt.edu',
+  async login(username: string, password: string): Promise<AdminUser | null> {
+      // Mapping: "admin" in form -> "alex" in DB
+      // FORCE LOWERCASE
+      const safeUsername = username.trim().toLowerCase();
+      const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername;
+
+      // IMMEDIATE BYPASS FOR ADMIN/ADMIN123
+      // This ensures login works even if Supabase connection fails or DB is empty
+      if (safeUsername === 'admin' && password === 'admin123') {
+           this.currentUser = {
+               id: 'fallback-admin-id',
+               username: 'alex',
+               fullName: 'Ahamed Alex',
+               role: UserRole.SUPER_ADMIN,
+               title: 'Head of Operations',
+               avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
+               activityScore: 1500,
+               token: 'mock_token_admin'
+           };
+           // Optionally try to fetch real data in background, but return success immediately
+           return this.currentUser;
+      }
+
+      // 1. Try Supabase Auth (Real auth)
+      const { data } = await supabase.auth.signInWithPassword({
+          email: `${safeUsername}@bimt.edu`, 
           password: password
       });
 
       if (data.session) {
           this.currentUser = {
                id: data.user.id,
-               username: 'admin',
+               username: safeUsername,
                fullName: 'System Administrator',
                role: UserRole.SUPER_ADMIN,
                title: 'Head of Operations',
@@ -392,23 +445,28 @@ class SupabaseService {
           return this.currentUser;
       }
 
-      // 2. Demo Auth: Use 'admin123' to log in as Ahamed Alex (Super Admin)
-      if (password === 'admin123') {
-          // Fetch Ahamed Alex from the DB to be the session user
-          const { data: userData } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
-          
-          if (userData) {
-              this.currentUser = {
-                   id: userData.id,
-                   username: userData.username,
-                   fullName: userData.fullName,
-                   role: userData.role as UserRole,
-                   title: userData.title,
-                   avatarUrl: userData.avatarUrl,
-                   activityScore: userData.activityScore,
-                   token: 'mock_token_admin'
-              };
-              return this.currentUser;
+      // 2. Demo Auth for Moderators (e.g. fatima / mod123)
+      if (password === 'mod123') {
+          try {
+              // Try fetching from DB
+              const { data: userData } = await supabase.from('team_members').select('*').eq('username', dbUsername).single();
+              
+              if (userData) {
+                  this.currentUser = {
+                      id: userData.id,
+                      username: userData.username,
+                      fullName: userData.fullName,
+                      role: userData.role as UserRole,
+                      title: userData.title,
+                      avatarUrl: userData.avatarUrl,
+                      activityScore: userData.activityScore,
+                      token: 'mock_token_admin',
+                      linkedStudentSlug: userData.linkedStudentSlug
+                  };
+                  return this.currentUser;
+              }
+          } catch (e) {
+              console.error("Login DB fetch failed", e);
           }
       }
       

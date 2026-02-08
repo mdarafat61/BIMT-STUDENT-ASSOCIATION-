@@ -7,6 +7,7 @@ import Button from '../components/Button';
 import { api } from '../services/mockDb';
 
 const AdminLogin: React.FC = () => {
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,7 +18,9 @@ const AdminLogin: React.FC = () => {
     setLoading(true);
     setError('');
 
-    const user = await api.login(password);
+    // Normalize input
+    const safeUser = username.trim().toLowerCase();
+    const user = await api.login(safeUser, password);
     
     if (user) {
       localStorage.setItem('cc_admin_token', user.token || '');
@@ -41,29 +44,24 @@ const AdminLogin: React.FC = () => {
         </h2>
         <div className="mt-2 text-center text-sm text-gray-400 space-y-1">
           <p>Authorized personnel only. All activities are logged.</p>
-          <p className="text-blue-400 font-mono text-xs">Default Keys: <strong>admin123</strong> (Admin) or <strong>mod123</strong> (Mod)</p>
+          <p className="text-blue-400 font-mono text-xs">
+              Default Keys: <strong>admin / admin123</strong><br/>
+              Moderators: <strong>fatima / mod123</strong>
+          </p>
         </div>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-gray-800 py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-gray-700">
           <form className="space-y-6" onSubmit={handleLogin}>
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-300">
-                Username
-              </label>
-              <div className="mt-1">
-                <input
-                  id="username"
-                  name="username"
-                  type="text"
-                  required
-                  defaultValue="admin"
-                  readOnly
-                  className="appearance-none block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm bg-gray-700 text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-              </div>
-            </div>
+            <Input
+              label="Username"
+              type="text"
+              required
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500"
+            />
 
             <Input
               label="Password"

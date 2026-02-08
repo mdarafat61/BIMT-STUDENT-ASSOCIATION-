@@ -45,7 +45,6 @@ const AdminDashboard: React.FC = () => {
   const [isEditingNotice, setIsEditingNotice] = useState(false);
 
   // Resource Form
-  // Changed fileBase64 to fileObj for Supabase upload
   const [resourceForm, setResourceForm] = useState<{title: string, department: Department, subject: string, type: 'note' | 'thesis' | 'paper', fileBase64: string}>({
       title: '', department: Department.CS, subject: '', type: 'note', fileBase64: ''
   });
@@ -60,6 +59,9 @@ const AdminDashboard: React.FC = () => {
           return;
         }
         
+        // Wait for session restore to complete
+        await api.restoreSession();
+        
         const user = api.getCurrentUser();
         if (user) {
             setCurrentUser(user);
@@ -70,11 +72,7 @@ const AdminDashboard: React.FC = () => {
                 linkedStudentSlug: user.linkedStudentSlug || ''
             });
         } else {
-             // In real supabase, we would verify token here
-             // For now, if api.currentUser isn't set, try to login or redirect
-             if (!api.getCurrentUser()) {
-                navigate('/admin-portal-secure');
-             }
+             navigate('/admin-portal-secure');
         }
     };
     checkAuth();
@@ -115,7 +113,7 @@ const AdminDashboard: React.FC = () => {
     navigate('/');
   };
 
-  // Helper: Read File (Legacy support, but we pass Base64 string to Supabase for simplicity in this migration if file obj not avail)
+  // Helper: Read File
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -131,7 +129,6 @@ const AdminDashboard: React.FC = () => {
   const handleNoticeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          // For notices, we can store the Base64 string and let the service handle upload
           const base64 = await readFileAsBase64(file);
           setNoticeForm(prev => ({ ...prev, attachmentUrl: base64 }));
       }
@@ -209,7 +206,7 @@ const AdminDashboard: React.FC = () => {
               subject: resourceForm.subject,
               type: resourceForm.type,
               authorName: currentUser?.fullName || 'Admin',
-              downloadUrl: resourceForm.fileBase64, // Service will detect Base64 and upload to Supabase
+              downloadUrl: resourceForm.fileBase64,
               version: 1
           });
           setResourceForm({ title: '', department: Department.CS, subject: '', type: 'note', fileBase64: '' });
@@ -243,9 +240,6 @@ const AdminDashboard: React.FC = () => {
           if (!file.type.startsWith('image/')) continue;
           
           try {
-              // We pass the File object directly to our new Supabase service
-              // But currently our service signature accepts string or File in implementation details
-              // To be safe with the 'compressImage' logic from before which returned string:
               const base64 = await readFileAsBase64(file);
               await api.uploadCampusImage(base64);
               uploaded++;
@@ -325,7 +319,7 @@ const AdminDashboard: React.FC = () => {
       }
   };
 
-  // Other Handlers (Existing)
+  // Other Handlers
   const handleSubmissionAction = async (id: string, status: 'approved' | 'rejected') => {
     await api.updateSubmissionStatus(id, status);
     refreshData();
