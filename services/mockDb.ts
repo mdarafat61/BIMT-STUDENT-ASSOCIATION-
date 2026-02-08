@@ -60,7 +60,7 @@ class SupabaseService {
                 
                 if (data) {
                      this.currentUser = {
-                       id: 'fallback-admin-id', // Keep the token ID consistent
+                       id: 'fallback-admin-id', 
                        username: data.username,
                        fullName: data.fullName,
                        role: data.role as UserRole,
@@ -71,7 +71,6 @@ class SupabaseService {
                        linkedStudentSlug: data.linkedStudentSlug
                     };
                 } else {
-                    // Default fallback if DB fetch fails
                      this.currentUser = {
                        id: 'fallback-admin-id',
                        username: 'alex',
@@ -147,22 +146,29 @@ class SupabaseService {
   async getAdminUsers(): Promise<AdminUser[]> {
       const { data } = await supabase.from('team_members').select('*').order('activityScore', {ascending: false});
       
-      if (data && data.length > 0) {
-          return data.map(u => ({
-              id: u.id,
-              username: u.username || 'user',
-              fullName: u.fullName,
-              title: u.title,
-              role: u.role as UserRole,
-              avatarUrl: u.avatarUrl,
-              activityScore: u.activityScore,
-              linkedStudentSlug: u.linkedStudentSlug
-          }));
+      let users = data?.map(u => ({
+          id: u.id,
+          username: u.username || 'user',
+          fullName: u.fullName,
+          title: u.title,
+          role: u.role as UserRole,
+          avatarUrl: u.avatarUrl,
+          activityScore: u.activityScore,
+          linkedStudentSlug: u.linkedStudentSlug
+      })) || [];
+
+      // If we are in mock mode, ensure our current user reflects local changes if not in DB
+      if (this.currentUser && this.currentUser.id === 'fallback-admin-id') {
+          const exists = users.find(u => u.username === this.currentUser?.username);
+          if (exists) {
+              // Update the fetched user with local session data to show immediate updates
+              Object.assign(exists, this.currentUser);
+          } else {
+              users.push(this.currentUser);
+          }
       }
-      
-      // Fallback if DB empty
-      if (this.currentUser) return [this.currentUser];
-      return [];
+
+      return users;
   }
 
   async createAdminUser(user: any): Promise<void> {
@@ -193,26 +199,27 @@ class SupabaseService {
          updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
      }
 
-     // CRITICAL FIX: If using fallback ID (logged in as 'admin'), update the 'alex' row in DB
+     // FIX: If fallback ID, try to update the matching username in DB
      if (id === 'fallback-admin-id') {
-        const { error } = await supabase.from('team_members').update({
-             fullName: updates.fullName,
-             title: updates.title,
-             avatarUrl: updates.avatarUrl,
-             linkedStudentSlug: updates.linkedStudentSlug
-         }).eq('username', 'alex'); // Target the actual DB row
-         
-         if (error) {
-             console.error("Failed to update DB for admin:", error);
-             // Don't throw, just update local to prevent app crash
-         }
+        if (this.currentUser) {
+            // Update local state immediately
+            this.currentUser = { ...this.currentUser, ...updates };
 
-         // Update local session
-         if (this.currentUser) this.currentUser = { ...this.currentUser, ...updates };
-         return;
+            // Try DB update
+            const { error } = await supabase.from('team_members')
+                .update({
+                    fullName: updates.fullName,
+                    title: updates.title,
+                    avatarUrl: updates.avatarUrl,
+                    linkedStudentSlug: updates.linkedStudentSlug
+                })
+                .eq('username', this.currentUser.username);
+                
+            if (error) console.warn("DB update failed (likely permission), but local state updated.");
+        }
+        return;
      }
 
-     // Standard update
      const { error } = await supabase.from('team_members').update({
          fullName: updates.fullName,
          title: updates.title,
@@ -222,7 +229,6 @@ class SupabaseService {
 
      if(error) throw new Error(error.message);
      
-     // Update local session if needed
      if (this.currentUser && this.currentUser.id === id) {
          this.currentUser = { ...this.currentUser, ...updates };
      }
@@ -252,10 +258,14 @@ class SupabaseService {
   }
 
   async incrementStudentViews(slug: string): Promise<void> {
-      // First get current views
-      const { data } = await supabase.from('students').select('views').eq('slug', slug).single();
-      if (data) {
-          await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
+      // Optimistically ignore errors for anonymous view counting
+      try {
+        const { data } = await supabase.from('students').select('views').eq('slug', slug).single();
+        if (data) {
+            await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
+        }
+      } catch (e) {
+          console.warn("Could not increment views (likely due to RLS permissions)");
       }
   }
 
@@ -276,7 +286,7 @@ class SupabaseService {
   async toggleStudentLock(id: string): Promise<void> {
      const { data } = await supabase.from('students').select('isLocked').eq('id', id).single();
      if (data) {
-         const newLockState = !data.isLocked; // Toggle boolean
+         const newLockState = !data.isLocked; 
          const { error } = await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
          
          if (error) throw new Error(error.message);
@@ -422,7 +432,7 @@ class SupabaseService {
         fullName: sub.studentName,
         slug: sub.studentName.toLowerCase().replace(/ /g, '-') + '-' + Date.now().toString().slice(-4),
         department: sub.department,
-        intake: sub.content.intake || 'Batch 00', // Use submitted intake or default
+        intake: sub.content.intake || 'Batch 00', 
         bio: sub.content.bio || '',
         avatarUrl: sub.content.avatarUrl,
         galleryImages: sub.content.galleryImages || [],
@@ -430,7 +440,7 @@ class SupabaseService {
         socialLinks: sub.content.socialLinks || [],
         contactEmail: sub.content.contactEmail,
         isFeatured: false,
-        isLocked: true, // Default to Secured
+        isLocked: true, 
         status: 'active'
     };
     await supabase.from('students').insert(studentData);
@@ -438,14 +448,35 @@ class SupabaseService {
 
   // --- Auth ---
   async login(username: string, password: string): Promise<AdminUser | null> {
-      // Mapping: "admin" in form -> "alex" in DB
-      // FORCE LOWERCASE
+      // Force Lowercase
       const safeUsername = username.trim().toLowerCase();
       const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername;
 
-      // IMMEDIATE BYPASS FOR ADMIN/ADMIN123
+      // 1. Try Supabase Auth FIRST (Real auth allows write access)
+      try {
+          const { data } = await supabase.auth.signInWithPassword({
+              email: `${safeUsername}@bimt.edu`, 
+              password: password
+          });
+
+          if (data.session) {
+              this.currentUser = {
+                   id: data.user.id,
+                   username: safeUsername,
+                   fullName: 'System Administrator',
+                   role: UserRole.SUPER_ADMIN,
+                   title: 'Head of Operations',
+                   avatarUrl: 'https://via.placeholder.com/150',
+                   activityScore: 100,
+                   token: data.session.access_token
+              };
+              return this.currentUser;
+          }
+      } catch(e) { console.log("Real auth skipped", e); }
+
+      // 2. Demo Auth Bypass (If Real Auth failed/not setup)
       if (safeUsername === 'admin' && password === 'admin123') {
-           // We try to fetch the real data for Alex to allow profile updates to work
+           // Fetch real data to allow profile updates to persist if possible
            let userData = null;
            try {
                const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
@@ -479,33 +510,11 @@ class SupabaseService {
            }
            return this.currentUser;
       }
-
-      // 1. Try Supabase Auth (Real auth)
-      const { data } = await supabase.auth.signInWithPassword({
-          email: `${safeUsername}@bimt.edu`, 
-          password: password
-      });
-
-      if (data.session) {
-          this.currentUser = {
-               id: data.user.id,
-               username: safeUsername,
-               fullName: 'System Administrator',
-               role: UserRole.SUPER_ADMIN,
-               title: 'Head of Operations',
-               avatarUrl: 'https://via.placeholder.com/150',
-               activityScore: 100,
-               token: data.session.access_token
-          };
-          return this.currentUser;
-      }
-
-      // 2. Demo Auth for Moderators (e.g. fatima / mod123)
+      
+      // 3. Demo Moderator
       if (password === 'mod123') {
           try {
-              // Try fetching from DB
               const { data: userData } = await supabase.from('team_members').select('*').eq('username', dbUsername).single();
-              
               if (userData) {
                   this.currentUser = {
                       id: userData.id,
@@ -520,9 +529,7 @@ class SupabaseService {
                   };
                   return this.currentUser;
               }
-          } catch (e) {
-              console.error("Login DB fetch failed", e);
-          }
+          } catch (e) {}
       }
       
       return null;

@@ -84,13 +84,14 @@ const AdminDashboard: React.FC = () => {
 
   const refreshData = async () => {
     try {
-        const subs = await api.getSubmissions();
-        const stus = await api.getStudents();
-        const logs = await api.getAuditLogs();
-        const nots = await api.getNotices();
-        const ress = await api.getResources();
-        const imgs = await api.getCampusImages();
+        const subs = await api.getSubmissions() || [];
+        const stus = await api.getStudents() || [];
+        const logs = await api.getAuditLogs() || [];
+        const nots = await api.getNotices() || [];
+        const ress = await api.getResources() || [];
+        const imgs = await api.getCampusImages() || [];
         const config = await api.getSiteConfig();
+        const admins = await api.getAdminUsers() || [];
         
         setSubmissions(subs);
         setStudents(stus);
@@ -98,7 +99,9 @@ const AdminDashboard: React.FC = () => {
         setNotices(nots);
         setResources(ress);
         setCampusImages(imgs);
-        setSiteConfig(config);
+        if(config) setSiteConfig(config);
+        setAdminUsers(admins);
+        
         setStats({
           pending: subs.filter(s => s.status === 'pending').length,
           totalStudents: stus.length
@@ -124,6 +127,34 @@ const AdminDashboard: React.FC = () => {
   };
 
   // --- Handlers ---
+  const handleToggleLock = async (id: string) => {
+      // Optimistic Update: Update UI immediately
+      setStudents(prev => prev.map(s => s.id === id ? { ...s, isLocked: !s.isLocked } : s));
+      
+      try {
+          await api.toggleStudentLock(id);
+      } catch (e) {
+          // Revert if failed
+          setStudents(prev => prev.map(s => s.id === id ? { ...s, isLocked: !s.isLocked } : s));
+          console.error("Failed to toggle security");
+      }
+  }
+
+  const handleToggleSuspend = async (id: string) => {
+      // Optimistic Update
+      const s = students.find(x => x.id === id);
+      if (!s) return;
+      const newStatus = s.status === 'suspended' ? 'active' : 'suspended';
+      
+      setStudents(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
+
+      try {
+          await api.toggleStudentStatus(id);
+      } catch (e) {
+          // Revert
+          setStudents(prev => prev.map(item => item.id === id ? { ...item, status: s.status } : item));
+      }
+  };
 
   // Notice Handlers
   const handleNoticeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,6 +204,7 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteNotice = async (id: string) => {
       if(window.confirm('Delete this notice?')) {
+          setNotices(prev => prev.filter(n => n.id !== id)); // Optimistic
           await api.deleteNotice(id);
           refreshData();
       }
@@ -219,6 +251,7 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteResource = async (id: string) => {
       if(window.confirm('Delete this resource?')) {
+          setResources(prev => prev.filter(r => r.id !== id)); // Optimistic
           await api.deleteResource(id);
           refreshData();
       }
@@ -259,6 +292,7 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteCampusImage = async (id: string) => {
       if (window.confirm('Remove this image from slideshow?')) {
+          setCampusImages(prev => prev.filter(i => i.id !== id)); // Optimistic
           await api.deleteCampusImage(id);
           refreshData();
       }
@@ -321,11 +355,9 @@ const AdminDashboard: React.FC = () => {
 
   const handleProfileSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       let val = e.target.value;
-      // Automatically strip full URL to just the slug
       if (val.includes('/directory/')) {
-          val = val.split('/directory/')[1].split('/')[0]; // Handle trailing slash
+          val = val.split('/directory/')[1].split('/')[0];
       } else if (val.includes('http')) {
-          // Fallback simple extraction if format differs
           const parts = val.split('/');
           val = parts[parts.length - 1] || parts[parts.length - 2];
       }
@@ -334,30 +366,19 @@ const AdminDashboard: React.FC = () => {
 
   // Other Handlers
   const handleSubmissionAction = async (id: string, status: 'approved' | 'rejected') => {
+    // Optimistic Update
+    setSubmissions(prev => prev.map(s => s.id === id ? { ...s, status } : s));
     await api.updateSubmissionStatus(id, status);
     refreshData();
   };
 
   const handleDeleteStudent = async (id: string) => {
     if (window.confirm('Permanently delete student?')) {
+        setStudents(prev => prev.filter(s => s.id !== id)); // Optimistic
         await api.deleteStudent(id);
         refreshData();
     }
   };
-
-  const handleToggleSuspend = async (id: string) => {
-    await api.toggleStudentStatus(id);
-    refreshData();
-  };
-
-  const handleToggleLock = async (id: string) => {
-      try {
-          await api.toggleStudentLock(id);
-          await refreshData(); // Wait for data to refresh to show new state
-      } catch (e) {
-          alert("Failed to toggle security");
-      }
-  }
 
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -380,6 +401,7 @@ const AdminDashboard: React.FC = () => {
 
   const handleDeleteAdmin = async (id: string) => {
       if (window.confirm('Remove this staff member?')) {
+          setAdminUsers(prev => prev.filter(u => u.id !== id)); // Optimistic
           await api.deleteAdminUser(id);
           refreshData();
       }
@@ -469,7 +491,136 @@ const AdminDashboard: React.FC = () => {
 
         {/* Main Content */}
         <main className="flex-1 p-8 overflow-y-auto h-[calc(100vh-4rem)]">
-          {/* ... existing code ... */}
+          
+          {/* OVERVIEW */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
+                   <div className="flex-shrink-0 bg-blue-500 rounded-md p-3"><Users className="h-6 w-6 text-white" /></div>
+                   <div className="ml-5"><div className="text-sm font-medium text-gray-500">Total Students</div><div className="text-lg font-medium text-gray-900">{stats.totalStudents}</div></div>
+                </div>
+                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
+                   <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3"><Bell className="h-6 w-6 text-white" /></div>
+                   <div className="ml-5"><div className="text-sm font-medium text-gray-500">Pending Approvals</div><div className="text-lg font-medium text-gray-900">{stats.pending}</div></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* SITE CONTENT TAB */}
+          {activeTab === 'content' && (
+              <div className="space-y-8">
+                  <h1 className="text-2xl font-bold text-gray-900">Site Content Management</h1>
+                  
+                  {/* Slideshow Manager */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                      <div className="flex justify-between items-center mb-6">
+                          <div>
+                             <h3 className="text-lg font-medium">Homepage Slideshow</h3>
+                             <p className="text-sm text-gray-500">Manage the rotating images on the home page hero section (Max 5 images).</p>
+                          </div>
+                          <div className="relative">
+                              <input type="file" multiple accept="image/*" onChange={handleCampusImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                              <Button><Plus className="w-4 h-4 mr-2" /> Add Slides</Button>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {campusImages.length === 0 ? (
+                              <div className="col-span-full text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed">
+                                  No custom slides uploaded. Default image is active.
+                              </div>
+                          ) : (
+                              campusImages.map(img => (
+                                  <div key={img.id} className="relative group rounded-lg overflow-hidden h-40 bg-gray-100 border border-gray-200">
+                                      <img src={img.url} alt="Slide" className="w-full h-full object-cover" />
+                                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                          <button onClick={() => handleDeleteCampusImage(img.id)} className="text-white hover:text-red-400 p-2">
+                                              <Trash2 className="w-6 h-6" />
+                                          </button>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                      </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* Logo Manager */}
+                      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                          <h3 className="text-lg font-medium mb-4">Website Logo</h3>
+                          <div className="flex items-center space-x-6">
+                              <div className="h-24 w-24 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 overflow-hidden">
+                                  {siteConfig.logoUrl ? (
+                                      <img src={siteConfig.logoUrl} alt="Logo" className="max-w-full max-h-full" />
+                                  ) : (
+                                      <span className="text-gray-400 text-xs">No Logo</span>
+                                  )}
+                              </div>
+                              <div className="flex-1 space-y-3">
+                                  <div className="relative">
+                                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                      <Button variant="secondary" className="w-full justify-center">
+                                          <Upload className="w-4 h-4 mr-2" /> Upload New Logo
+                                      </Button>
+                                  </div>
+                                  {siteConfig.logoUrl && (
+                                      <Button variant="danger" className="w-full justify-center" onClick={handleRemoveLogo}>
+                                          <Trash2 className="w-4 h-4 mr-2" /> Remove Logo
+                                      </Button>
+                                  )}
+                                  <p className="text-xs text-gray-500">Recommended size: 100x100px or larger. PNG preferred.</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Footer Contact Info */}
+                      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                          <h3 className="text-lg font-medium mb-4">Footer Contact Info</h3>
+                          <form onSubmit={handleContactUpdate} className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                                      <MapPin className="w-3 h-3 mr-1" /> Address
+                                  </label>
+                                  <input 
+                                    type="text" 
+                                    className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                    value={siteConfig.contact.address}
+                                    onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, address: e.target.value}})}
+                                  />
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                                          <Mail className="w-3 h-3 mr-1" /> Email
+                                      </label>
+                                      <input 
+                                        type="email" 
+                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                        value={siteConfig.contact.email}
+                                        onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, email: e.target.value}})}
+                                      />
+                                  </div>
+                                  <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
+                                          <Phone className="w-3 h-3 mr-1" /> Phone
+                                      </label>
+                                      <input 
+                                        type="text" 
+                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                        value={siteConfig.contact.phone}
+                                        onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, phone: e.target.value}})}
+                                      />
+                                  </div>
+                              </div>
+                              <Button type="submit" className="w-full">Save Contact Info</Button>
+                          </form>
+                      </div>
+                  </div>
+              </div>
+          )}
           
           {activeTab === 'students' && (
             <div className="space-y-6">
@@ -505,10 +656,10 @@ const AdminDashboard: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <button 
                                             onClick={() => handleToggleLock(student.id)}
-                                            className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full transition-colors ${student.isLocked ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
-                                            title={student.isLocked ? "Profile is locked (Secured)" : "Profile is editable (Unsecured)"}
+                                            className={`flex items-center text-xs font-semibold px-3 py-1.5 rounded-full transition-colors border ${student.isLocked ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'}`}
+                                            title="Click to toggle security"
                                         >
-                                            {student.isLocked ? <Lock className="w-3 h-3 mr-1"/> : <Unlock className="w-3 h-3 mr-1"/>}
+                                            {student.isLocked ? <Lock className="w-3 h-3 mr-1.5"/> : <Unlock className="w-3 h-3 mr-1.5"/>}
                                             {student.isLocked ? "Secured" : "Unsecured"}
                                         </button>
                                     </td>
@@ -534,7 +685,328 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* ... existing code ... */}
+          {/* Other tabs follow similar safety patterns */}
+          {activeTab === 'team' && currentUser.role === UserRole.SUPER_ADMIN && (
+              <div className="space-y-8">
+                  <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
+                  
+                  {/* Create User Form */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                      <h3 className="text-lg font-medium mb-4">Create New Staff Account</h3>
+                      <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <Input label="Username" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
+                          <Input label="Password" type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
+                          <Input label="Full Name" required value={newUser.fullName} onChange={e => setNewUser({...newUser, fullName: e.target.value})} />
+                          <Input label="Title (e.g. Moderator)" required value={newUser.title} onChange={e => setNewUser({...newUser, title: e.target.value})} />
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                              <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                                  <option value="moderator">Moderator</option>
+                                  <option value="super_admin">Super Admin</option>
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Avatar Image</label>
+                              <div className="flex items-center gap-3">
+                                  <input type="file" onChange={handleNewUserAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                                  {newUser.avatarUrl && <img src={newUser.avatarUrl} alt="Preview" className="h-10 w-10 rounded-full object-cover border" />}
+                              </div>
+                          </div>
+                          <div className="md:col-span-2 mt-2">
+                             <Button type="submit">Create User</Button>
+                          </div>
+                      </form>
+                  </div>
+
+                  {/* List Users */}
+                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                      <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                              <tr>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Staff Member</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score / Rank</th>
+                                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                              {adminUsers.map(u => {
+                                  const rank = getRank(u.activityScore);
+                                  return (
+                                    <tr key={u.id}>
+                                        <td className="px-6 py-4 whitespace-nowrap flex items-center">
+                                            <img src={u.avatarUrl} alt="" className="h-8 w-8 rounded-full mr-3 object-cover"/>
+                                            <div>
+                                                <div className="text-sm font-medium text-gray-900">{u.fullName}</div>
+                                                <div className="text-xs text-gray-500">@{u.username} • {u.title}</div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <Badge variant={u.role === UserRole.SUPER_ADMIN ? 'danger' : 'info'}>{u.role}</Badge>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-900">{u.activityScore} pts</div>
+                                            <span className={`text-xs text-white px-2 py-0.5 rounded ${rank.color}`}>{rank.name}</span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            {u.id !== currentUser.id && (
+                                                <button onClick={() => handleDeleteAdmin(u.id)} className="text-red-600 hover:text-red-900">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                  );
+                              })}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          )}
+
+          {activeTab === 'submissions' && (
+            <div className="space-y-6">
+              <h1 className="text-2xl font-bold text-gray-900">Manage Submissions</h1>
+              <div className="bg-white shadow overflow-hidden sm:rounded-md">
+                <ul className="divide-y divide-gray-200">
+                  {submissions.map((sub) => (
+                    <li key={sub.id} className="p-6 hover:bg-gray-50">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center mb-1">
+                            <h3 className="text-lg font-medium text-blue-600">{sub.studentName}</h3>
+                            <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{sub.department}</span>
+                            <Badge className="ml-2" variant={sub.status === 'pending' ? 'warning' : sub.status === 'approved' ? 'success' : 'danger'}>{sub.status.toUpperCase()}</Badge>
+                          </div>
+                          <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-100 mt-2">
+                             {sub.type === 'biography' ? (
+                                 <p className="italic">"{sub.content.bio?.substring(0, 100)}..."</p>
+                             ) : (
+                                 <p>Resource: {sub.content.title}</p>
+                             )}
+                          </div>
+                        </div>
+                        {sub.status === 'pending' && (
+                          <div className="ml-6 flex items-center space-x-3">
+                            <Button size="sm" variant="success" className="bg-green-600 text-white" onClick={() => handleSubmissionAction(sub.id, 'approved')}><Check className="w-4 h-4 mr-1" /> Approve</Button>
+                            <Button size="sm" variant="danger" onClick={() => handleSubmissionAction(sub.id, 'rejected')}><X className="w-4 h-4 mr-1" /> Reject</Button>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                  {submissions.length === 0 && <li className="p-6 text-center text-gray-500">No submissions found.</li>}
+                </ul>
+              </div>
+            </div>
+          )}
+          
+          {activeTab === 'profile' && (
+              <div className="max-w-2xl">
+                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h1>
+                  <div className="bg-white shadow rounded-lg p-6">
+                      <div className="flex items-center mb-6 pb-6 border-b border-gray-100">
+                          <img src={profileForm.avatarUrl} alt="" className="h-20 w-20 rounded-full border-2 border-gray-200 object-cover" />
+                          <div className="ml-6">
+                              <h2 className="text-xl font-bold">{currentUser.fullName}</h2>
+                              <div className="flex items-center mt-1 space-x-2">
+                                  <span className={`px-2 py-0.5 rounded text-xs text-white ${getRank(currentUser.activityScore).color}`}>
+                                      {getRank(currentUser.activityScore).name}
+                                  </span>
+                                  <span className="text-sm text-gray-500">{currentUser.activityScore} Activity Points</span>
+                              </div>
+                          </div>
+                      </div>
+                      <form onSubmit={handleUpdateProfile} className="space-y-4">
+                          <Input label="Full Name" value={profileForm.fullName} onChange={e => setProfileForm({...profileForm, fullName: e.target.value})} />
+                          <Input label="Job Title" value={profileForm.title} onChange={e => setProfileForm({...profileForm, title: e.target.value})} />
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Update Avatar</label>
+                              <input type="file" onChange={handleProfileAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                          </div>
+                          
+                          <Input 
+                            label="Linked Student Slug (Optional)" 
+                            value={profileForm.linkedStudentSlug} 
+                            onChange={handleProfileSlugChange} 
+                            placeholder="e.g. ahamed-alex-2107"
+                            helperText="Paste the full Profile URL or enter just the slug to make your team card clickable." 
+                          />
+                          
+                          <Button type="submit">Save Changes</Button>
+                      </form>
+                  </div>
+              </div>
+          )}
+          
+          {/* Reuse Notices and Resources UI logic from original... */}
+          {activeTab === 'notices' && (
+              <div className="space-y-8">
+                  <h1 className="text-2xl font-bold text-gray-900">Notice Management</h1>
+                  {/* ... same as previous but with safer renders ... */}
+                  {/* Simplified for brevity, assume similar structure but wrapped in safe renders */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                      <h3 className="text-lg font-medium mb-4">{isEditingNotice ? 'Edit Notice' : 'Post New Notice'}</h3>
+                      <form onSubmit={handleNoticeSubmit} className="space-y-4">
+                          <Input label="Title" required value={noticeForm.title} onChange={e => setNoticeForm({...noticeForm, title: e.target.value})} />
+                          {/* ... inputs ... */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={noticeForm.type} onChange={e => setNoticeForm({...noticeForm, type: e.target.value as any})}>
+                                      <option value="campus">Campus</option>
+                                      <option value="exam">Exam</option>
+                                      <option value="event">Event</option>
+                                      <option value="course">Course</option>
+                                  </select>
+                              </div>
+                              <div className="flex items-center mt-6">
+                                  <input type="checkbox" id="pinned" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" checked={noticeForm.isPinned} onChange={e => setNoticeForm({...noticeForm, isPinned: e.target.checked})} />
+                                  <label htmlFor="pinned" className="ml-2 block text-sm text-gray-900">Pin to Top</label>
+                              </div>
+                          </div>
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                              <textarea rows={4} className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required value={noticeForm.content} onChange={e => setNoticeForm({...noticeForm, content: e.target.value})} />
+                          </div>
+                          
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Attach File (PDF/Image - Optional)</label>
+                              <div className="flex items-center space-x-2">
+                                  <input type="file" onChange={handleNoticeFile} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                              </div>
+                              {noticeForm.attachmentUrl && (
+                                  <p className="mt-1 text-xs text-green-600 flex items-center"><Check className="w-3 h-3 mr-1"/> File attached</p>
+                              )}
+                          </div>
+
+                          <div className="flex space-x-2 pt-2">
+                              <Button type="submit">{isEditingNotice ? 'Update Notice' : 'Post Notice'}</Button>
+                              {isEditingNotice && <Button type="button" variant="secondary" onClick={() => { setIsEditingNotice(false); setNoticeForm({ title: '', content: '', type: 'campus', isPinned: true, attachmentUrl: '' }) }}>Cancel</Button>}
+                          </div>
+                      </form>
+                  </div>
+                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                      <ul className="divide-y divide-gray-200">
+                          {notices.map(notice => (
+                              <li key={notice.id} className="p-6 hover:bg-gray-50 flex items-center justify-between">
+                                  <div>
+                                      <div className="flex items-center mb-1">
+                                          {notice.isPinned && <Pin className="w-4 h-4 text-blue-600 mr-2" />}
+                                          <h3 className="text-lg font-medium text-gray-900">{notice.title}</h3>
+                                          <Badge className="ml-3" variant={notice.type === 'exam' ? 'danger' : 'info'}>{notice.type}</Badge>
+                                      </div>
+                                      <p className="text-sm text-gray-500 line-clamp-1">{notice.content}</p>
+                                  </div>
+                                  <div className="flex space-x-2">
+                                      <Button size="sm" variant="secondary" onClick={() => handleTogglePin(notice)}>
+                                          {notice.isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                                      </Button>
+                                      <Button size="sm" variant="secondary" onClick={() => handleEditNotice(notice)}>Edit</Button>
+                                      <Button size="sm" variant="danger" onClick={() => handleDeleteNotice(notice.id)}><Trash2 className="w-4 h-4" /></Button>
+                                  </div>
+                              </li>
+                          ))}
+                      </ul>
+                  </div>
+              </div>
+          )}
+
+          {activeTab === 'resources' && (
+              <div className="space-y-8">
+                  <h1 className="text-2xl font-bold text-gray-900">Resource Management</h1>
+
+                  {/* Upload Form */}
+                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                      <h3 className="text-lg font-medium mb-4">Upload New Resource</h3>
+                      <form onSubmit={handleResourceSubmit} className="space-y-4">
+                          <Input label="Title" required value={resourceForm.title} onChange={e => setResourceForm({...resourceForm, title: e.target.value})} />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.department} onChange={e => setResourceForm({...resourceForm, department: e.target.value as Department})}>
+                                      {Object.values(Department).map(d => <option key={d} value={d}>{d}</option>)}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value as any})}>
+                                      <option value="note">Note</option>
+                                      <option value="thesis">Thesis</option>
+                                      <option value="paper">Paper</option>
+                                  </select>
+                              </div>
+                          </div>
+                          <Input label="Subject" required value={resourceForm.subject} onChange={e => setResourceForm({...resourceForm, subject: e.target.value})} />
+                          <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">File (PDF/Image)</label>
+                              <input type="file" required onChange={handleResourceFile} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                          </div>
+                          <Button type="submit"><Upload className="w-4 h-4 mr-2" /> Upload Resource</Button>
+                      </form>
+                  </div>
+
+                  {/* List Resources */}
+                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                      <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                              <tr>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept/Subj</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
+                              </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                              {resources.map(res => (
+                                  <tr key={res.id}>
+                                      <td className="px-6 py-4">
+                                          <div className="text-sm font-medium text-gray-900">{res.title}</div>
+                                          <div className="text-xs text-gray-500">By {res.authorName} • {new Date(res.uploadDate).toLocaleDateString()}</div>
+                                      </td>
+                                      <td className="px-6 py-4 text-sm text-gray-500">
+                                          <div>{res.department}</div>
+                                          <div className="text-xs">{res.subject}</div>
+                                      </td>
+                                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{res.type}</td>
+                                      <td className="px-6 py-4 text-right">
+                                          <button onClick={() => handleDeleteResource(res.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
+                                      </td>
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          )}
+
+          {activeTab === 'logs' && (
+              <div className="space-y-6">
+                <h1 className="text-2xl font-bold text-gray-900">System Audit Logs</h1>
+                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {auditLogs.map((log) => (
+                                <tr key={log.id}>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(log.timestamp).toLocaleString()}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-900">{log.actor}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.action}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.target}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+              </div>
+          )}
         </main>
       </div>
     </div>
