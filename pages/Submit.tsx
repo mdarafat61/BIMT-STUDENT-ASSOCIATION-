@@ -15,7 +15,8 @@ const Submit: React.FC = () => {
   // Form State
   const [basicInfo, setBasicInfo] = useState({
     fullName: '',
-    department: Department.CS,
+    department: Department.MT, // Default to first enum value
+    intake: '', // New Intake field
     bio: '',
     email: '',
     resourceTitle: '',
@@ -103,10 +104,12 @@ const Submit: React.FC = () => {
           ? { 
               title: basicInfo.resourceTitle, 
               description: basicInfo.resourceDesc,
-              downloadUrl: media.resourceFile // Using base64 as download link
+              downloadUrl: media.resourceFile, // Using base64 as download link
+              intake: basicInfo.intake
             }
           : { 
               bio: basicInfo.bio,
+              intake: basicInfo.intake,
               avatarUrl: media.avatarUrl,
               galleryImages: cleanGallery,
               socialLinks: cleanSocials,
@@ -207,6 +210,16 @@ const Submit: React.FC = () => {
                             {Object.values(Department).map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
                     </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <Input 
+                        label="Intake / Batch" 
+                        placeholder="e.g., Batch 25" 
+                        required 
+                        value={basicInfo.intake} 
+                        onChange={(e) => setBasicInfo({...basicInfo, intake: e.target.value})} 
+                    />
                 </div>
                 
                 {submissionType === 'biography' && (

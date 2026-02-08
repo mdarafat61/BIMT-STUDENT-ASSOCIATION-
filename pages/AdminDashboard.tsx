@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Bell, LogOut, Check, X, Shield, Activity, Trash2, Ban, Plus, Settings, Briefcase, Pin, PinOff, Upload, Book, File, Camera, Image as ImageIcon, Globe, Phone, Mail, MapPin } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Bell, LogOut, Check, X, Shield, Activity, Trash2, Ban, Plus, Settings, Briefcase, Pin, PinOff, Upload, Book, File, Camera, Image as ImageIcon, Globe, Phone, Mail, MapPin, Lock, Unlock } from 'lucide-react';
 import { api } from '../services/mockDb';
 import { Submission, Student, AuditLogEntry, UserRole, AdminUser, Notice, Resource, Department, CampusImage, SiteConfig } from '../types';
 import Badge from '../components/Badge';
@@ -46,7 +46,7 @@ const AdminDashboard: React.FC = () => {
 
   // Resource Form
   const [resourceForm, setResourceForm] = useState<{title: string, department: Department, subject: string, type: 'note' | 'thesis' | 'paper', fileBase64: string}>({
-      title: '', department: Department.CS, subject: '', type: 'note', fileBase64: ''
+      title: '', department: Department.MT, subject: '', type: 'note', fileBase64: ''
   });
 
   const navigate = useNavigate();
@@ -209,7 +209,7 @@ const AdminDashboard: React.FC = () => {
               downloadUrl: resourceForm.fileBase64,
               version: 1
           });
-          setResourceForm({ title: '', department: Department.CS, subject: '', type: 'note', fileBase64: '' });
+          setResourceForm({ title: '', department: Department.MT, subject: '', type: 'note', fileBase64: '' });
           refreshData();
           alert('Resource posted!');
       } catch (e) {
@@ -319,6 +319,19 @@ const AdminDashboard: React.FC = () => {
       }
   };
 
+  const handleProfileSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      let val = e.target.value;
+      // Automatically strip full URL to just the slug
+      if (val.includes('/directory/')) {
+          val = val.split('/directory/')[1].split('/')[0]; // Handle trailing slash
+      } else if (val.includes('http')) {
+          // Fallback simple extraction if format differs
+          const parts = val.split('/');
+          val = parts[parts.length - 1] || parts[parts.length - 2];
+      }
+      setProfileForm({...profileForm, linkedStudentSlug: val});
+  };
+
   // Other Handlers
   const handleSubmissionAction = async (id: string, status: 'approved' | 'rejected') => {
     await api.updateSubmissionStatus(id, status);
@@ -336,6 +349,11 @@ const AdminDashboard: React.FC = () => {
     await api.toggleStudentStatus(id);
     refreshData();
   };
+
+  const handleToggleLock = async (id: string) => {
+      await api.toggleStudentLock(id);
+      refreshData();
+  }
 
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -574,230 +592,6 @@ const AdminDashboard: React.FC = () => {
               </div>
           )}
 
-          {/* Other tabs follow similar patterns, sharing state */}
-          {activeTab === 'notices' && (
-              <div className="space-y-8">
-                  <h1 className="text-2xl font-bold text-gray-900">Notice Management</h1>
-                  
-                  {/* Create Notice Form */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                      <h3 className="text-lg font-medium mb-4">{isEditingNotice ? 'Edit Notice' : 'Post New Notice'}</h3>
-                      <form onSubmit={handleNoticeSubmit} className="space-y-4">
-                          <Input label="Title" required value={noticeForm.title} onChange={e => setNoticeForm({...noticeForm, title: e.target.value})} />
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={noticeForm.type} onChange={e => setNoticeForm({...noticeForm, type: e.target.value as any})}>
-                                      <option value="campus">Campus</option>
-                                      <option value="exam">Exam</option>
-                                      <option value="event">Event</option>
-                                      <option value="course">Course</option>
-                                  </select>
-                              </div>
-                              <div className="flex items-center mt-6">
-                                  <input type="checkbox" id="pinned" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" checked={noticeForm.isPinned} onChange={e => setNoticeForm({...noticeForm, isPinned: e.target.checked})} />
-                                  <label htmlFor="pinned" className="ml-2 block text-sm text-gray-900">Pin to Top</label>
-                              </div>
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                              <textarea rows={4} className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required value={noticeForm.content} onChange={e => setNoticeForm({...noticeForm, content: e.target.value})} />
-                          </div>
-                          
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Attach File (PDF/Image - Optional)</label>
-                              <div className="flex items-center space-x-2">
-                                  <input type="file" onChange={handleNoticeFile} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                              </div>
-                              {noticeForm.attachmentUrl && (
-                                  <p className="mt-1 text-xs text-green-600 flex items-center"><Check className="w-3 h-3 mr-1"/> File attached</p>
-                              )}
-                          </div>
-
-                          <div className="flex space-x-2 pt-2">
-                              <Button type="submit">{isEditingNotice ? 'Update Notice' : 'Post Notice'}</Button>
-                              {isEditingNotice && <Button type="button" variant="secondary" onClick={() => { setIsEditingNotice(false); setNoticeForm({ title: '', content: '', type: 'campus', isPinned: true, attachmentUrl: '' }) }}>Cancel</Button>}
-                          </div>
-                      </form>
-                  </div>
-
-                  {/* List Notices */}
-                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                      <ul className="divide-y divide-gray-200">
-                          {notices.map(notice => (
-                              <li key={notice.id} className="p-6 hover:bg-gray-50 flex items-center justify-between">
-                                  <div>
-                                      <div className="flex items-center mb-1">
-                                          {notice.isPinned && <Pin className="w-4 h-4 text-blue-600 mr-2" />}
-                                          <h3 className="text-lg font-medium text-gray-900">{notice.title}</h3>
-                                          <Badge className="ml-3" variant={notice.type === 'exam' ? 'danger' : 'info'}>{notice.type}</Badge>
-                                      </div>
-                                      <p className="text-sm text-gray-500 line-clamp-1">{notice.content}</p>
-                                      <div className="flex items-center gap-2 mt-1">
-                                         <span className="text-xs text-gray-400">{new Date(notice.postedAt).toLocaleDateString()}</span>
-                                         {notice.attachmentUrl && <span className="text-xs text-blue-500 flex items-center"><File className="w-3 h-3 mr-1" /> Attachment</span>}
-                                      </div>
-                                  </div>
-                                  <div className="flex space-x-2">
-                                      <Button size="sm" variant="secondary" onClick={() => handleTogglePin(notice)}>
-                                          {notice.isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                                      </Button>
-                                      <Button size="sm" variant="secondary" onClick={() => handleEditNotice(notice)}>Edit</Button>
-                                      <Button size="sm" variant="danger" onClick={() => handleDeleteNotice(notice.id)}><Trash2 className="w-4 h-4" /></Button>
-                                  </div>
-                              </li>
-                          ))}
-                      </ul>
-                  </div>
-              </div>
-          )}
-
-          {activeTab === 'resources' && (
-              <div className="space-y-8">
-                  <h1 className="text-2xl font-bold text-gray-900">Resource Management</h1>
-
-                  {/* Upload Form */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                      <h3 className="text-lg font-medium mb-4">Upload New Resource</h3>
-                      <form onSubmit={handleResourceSubmit} className="space-y-4">
-                          <Input label="Title" required value={resourceForm.title} onChange={e => setResourceForm({...resourceForm, title: e.target.value})} />
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.department} onChange={e => setResourceForm({...resourceForm, department: e.target.value as Department})}>
-                                      {Object.values(Department).map(d => <option key={d} value={d}>{d}</option>)}
-                                  </select>
-                              </div>
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value as any})}>
-                                      <option value="note">Note</option>
-                                      <option value="thesis">Thesis</option>
-                                      <option value="paper">Paper</option>
-                                  </select>
-                              </div>
-                          </div>
-                          <Input label="Subject" required value={resourceForm.subject} onChange={e => setResourceForm({...resourceForm, subject: e.target.value})} />
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">File (PDF/Image)</label>
-                              <input type="file" required onChange={handleResourceFile} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                          </div>
-                          <Button type="submit"><Upload className="w-4 h-4 mr-2" /> Upload Resource</Button>
-                      </form>
-                  </div>
-
-                  {/* List Resources */}
-                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                      <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                              <tr>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept/Subj</th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
-                              </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                              {resources.map(res => (
-                                  <tr key={res.id}>
-                                      <td className="px-6 py-4">
-                                          <div className="text-sm font-medium text-gray-900">{res.title}</div>
-                                          <div className="text-xs text-gray-500">By {res.authorName} • {new Date(res.uploadDate).toLocaleDateString()}</div>
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-gray-500">
-                                          <div>{res.department}</div>
-                                          <div className="text-xs">{res.subject}</div>
-                                      </td>
-                                      <td className="px-6 py-4 text-sm text-gray-500 capitalize">{res.type}</td>
-                                      <td className="px-6 py-4 text-right">
-                                          <button onClick={() => handleDeleteResource(res.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-4 h-4" /></button>
-                                      </td>
-                                  </tr>
-                              ))}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
-          )}
-
-          {activeTab === 'team' && currentUser.role === UserRole.SUPER_ADMIN && (
-              <div className="space-y-8">
-                  <h1 className="text-2xl font-bold text-gray-900">Team Management</h1>
-                  
-                  {/* Create User Form */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                      <h3 className="text-lg font-medium mb-4">Create New Staff Account</h3>
-                      <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <Input label="Username" required value={newUser.username} onChange={e => setNewUser({...newUser, username: e.target.value})} />
-                          <Input label="Password" type="password" required value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} />
-                          <Input label="Full Name" required value={newUser.fullName} onChange={e => setNewUser({...newUser, fullName: e.target.value})} />
-                          <Input label="Title (e.g. Moderator)" required value={newUser.title} onChange={e => setNewUser({...newUser, title: e.target.value})} />
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                              <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
-                                  <option value="moderator">Moderator</option>
-                                  <option value="super_admin">Super Admin</option>
-                              </select>
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Avatar Image</label>
-                              <div className="flex items-center gap-3">
-                                  <input type="file" onChange={handleNewUserAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                                  {newUser.avatarUrl && <img src={newUser.avatarUrl} alt="Preview" className="h-10 w-10 rounded-full object-cover border" />}
-                              </div>
-                          </div>
-                          <div className="md:col-span-2 mt-2">
-                             <Button type="submit">Create User</Button>
-                          </div>
-                      </form>
-                  </div>
-
-                  {/* List Users */}
-                  <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                      <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                              <tr>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Staff Member</th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Score / Rank</th>
-                                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
-                              </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                              {adminUsers.map(u => {
-                                  const rank = getRank(u.activityScore);
-                                  return (
-                                    <tr key={u.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap flex items-center">
-                                            <img src={u.avatarUrl} alt="" className="h-8 w-8 rounded-full mr-3 object-cover"/>
-                                            <div>
-                                                <div className="text-sm font-medium text-gray-900">{u.fullName}</div>
-                                                <div className="text-xs text-gray-500">@{u.username} • {u.title}</div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <Badge variant={u.role === UserRole.SUPER_ADMIN ? 'danger' : 'info'}>{u.role}</Badge>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900">{u.activityScore} pts</div>
-                                            <span className={`text-xs text-white px-2 py-0.5 rounded ${rank.color}`}>{rank.name}</span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                                            {u.id !== currentUser.id && (
-                                                <button onClick={() => handleDeleteAdmin(u.id)} className="text-red-600 hover:text-red-900">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                  );
-                              })}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
-          )}
-
           {activeTab === 'profile' && (
               <div className="max-w-2xl">
                   <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h1>
@@ -821,7 +615,15 @@ const AdminDashboard: React.FC = () => {
                               <label className="block text-sm font-medium text-gray-700 mb-1">Update Avatar</label>
                               <input type="file" onChange={handleProfileAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
                           </div>
-                          <Input label="Linked Student Slug (Optional)" value={profileForm.linkedStudentSlug} onChange={e => setProfileForm({...profileForm, linkedStudentSlug: e.target.value})} helperText="Enter your student profile URL slug to make your team card clickable." />
+                          
+                          <Input 
+                            label="Linked Student Slug (Optional)" 
+                            value={profileForm.linkedStudentSlug} 
+                            onChange={handleProfileSlugChange} 
+                            placeholder="e.g. ahamed-alex-2107"
+                            helperText="Paste the full Profile URL or enter just the slug to make your team card clickable." 
+                          />
+                          
                           <Button type="submit">Save Changes</Button>
                       </form>
                   </div>
@@ -838,6 +640,7 @@ const AdminDashboard: React.FC = () => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Security</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                             </tr>
                         </thead>
@@ -848,6 +651,7 @@ const AdminDashboard: React.FC = () => {
                                         <img className="h-10 w-10 rounded-full object-cover mr-4" src={student.avatarUrl} alt="" />
                                         <div>
                                             <div className="text-sm font-medium text-gray-900">{student.fullName}</div>
+                                            <div className="text-xs text-gray-500">{student.intake}</div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.department}</td>
@@ -855,6 +659,16 @@ const AdminDashboard: React.FC = () => {
                                         <Badge variant={student.status === 'active' ? 'success' : student.status === 'suspended' ? 'danger' : 'neutral'}>
                                             {student.status}
                                         </Badge>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <button 
+                                            onClick={() => handleToggleLock(student.id)}
+                                            className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${student.isLocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}
+                                            title={student.isLocked ? "Profile is locked (Secured)" : "Profile is editable (Unsecured)"}
+                                        >
+                                            {student.isLocked ? <Lock className="w-3 h-3 mr-1"/> : <Unlock className="w-3 h-3 mr-1"/>}
+                                            {student.isLocked ? "Secured" : "Unsecured"}
+                                        </button>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <button 
@@ -876,71 +690,6 @@ const AdminDashboard: React.FC = () => {
                     </table>
                 </div>
             </div>
-          )}
-
-          {activeTab === 'submissions' && (
-            <div className="space-y-6">
-              <h1 className="text-2xl font-bold text-gray-900">Manage Submissions</h1>
-              <div className="bg-white shadow overflow-hidden sm:rounded-md">
-                <ul className="divide-y divide-gray-200">
-                  {submissions.map((sub) => (
-                    <li key={sub.id} className="p-6 hover:bg-gray-50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center mb-1">
-                            <h3 className="text-lg font-medium text-blue-600">{sub.studentName}</h3>
-                            <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">{sub.department}</span>
-                            <Badge className="ml-2" variant={sub.status === 'pending' ? 'warning' : sub.status === 'approved' ? 'success' : 'danger'}>{sub.status.toUpperCase()}</Badge>
-                          </div>
-                          <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-100 mt-2">
-                             {sub.type === 'biography' ? (
-                                 <p className="italic">"{sub.content.bio?.substring(0, 100)}..."</p>
-                             ) : (
-                                 <p>Resource: {sub.content.title}</p>
-                             )}
-                          </div>
-                        </div>
-                        {sub.status === 'pending' && (
-                          <div className="ml-6 flex items-center space-x-3">
-                            <Button size="sm" variant="success" className="bg-green-600 text-white" onClick={() => handleSubmissionAction(sub.id, 'approved')}><Check className="w-4 h-4 mr-1" /> Approve</Button>
-                            <Button size="sm" variant="danger" onClick={() => handleSubmissionAction(sub.id, 'rejected')}><X className="w-4 h-4 mr-1" /> Reject</Button>
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                  {submissions.length === 0 && <li className="p-6 text-center text-gray-500">No submissions found.</li>}
-                </ul>
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'logs' && (
-              <div className="space-y-6">
-                <h1 className="text-2xl font-bold text-gray-900">System Audit Logs</h1>
-                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {auditLogs.map((log) => (
-                                <tr key={log.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(log.timestamp).toLocaleString()}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-900">{log.actor}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.action}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.target}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-              </div>
           )}
         </main>
       </div>

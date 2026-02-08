@@ -1,18 +1,11 @@
 
 export enum Department {
-  CS = 'Computer Science',
-  ENG = 'Engineering',
-  ARTS = 'Arts & Humanities',
-  BUS = 'Business Administration',
-  MED = 'Medical Sciences'
+  MT = 'Marine Technology',
+  SBT = 'Shipbuilding Technology'
 }
 
-export enum Intake {
-  FALL_2023 = 'Fall 2023',
-  SPRING_2023 = 'Spring 2023',
-  FALL_2024 = 'Fall 2024',
-  SPRING_2024 = 'Spring 2024'
-}
+// Intake is now a string to allow "Batch 25", "Fall 2024", etc.
+export type Intake = string;
 
 export enum UserRole {
   GUEST = 'guest',
@@ -47,6 +40,7 @@ export interface Student {
   contactEmail?: string; // Made public
   views: number;
   isFeatured: boolean;
+  isLocked: boolean; // New field for Secured/Unsecured
   status: 'active' | 'graduated' | 'suspended';
   createdAt: string;
 }
@@ -59,6 +53,7 @@ export interface Submission {
   department: Department;
   content: {
     // For Biographies/Profiles
+    intake?: string; // Added intake to submission content
     bio?: string;
     avatarUrl?: string;
     galleryImages?: string[];

@@ -220,7 +220,7 @@ class SupabaseService {
 
     if (filter) {
       if (filter.dept && filter.dept !== 'All') query = query.eq('department', filter.dept);
-      if (filter.intake && filter.intake !== 'All') query = query.eq('intake', filter.intake);
+      if (filter.intake && filter.intake !== 'All') query = query.ilike('intake', `%${filter.intake}%`);
       if (filter.search) query = query.ilike('fullName', `%${filter.search}%`);
     }
 
@@ -248,6 +248,15 @@ class SupabaseService {
          const newStatus = data.status === 'suspended' ? 'active' : 'suspended';
          await supabase.from('students').update({ status: newStatus }).eq('id', id);
          await this.logAction('Toggled Status', id, newStatus);
+     }
+  }
+
+  async toggleStudentLock(id: string): Promise<void> {
+     const { data } = await supabase.from('students').select('isLocked').eq('id', id).single();
+     if (data) {
+         const newLockState = !data.isLocked;
+         await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
+         await this.logAction('Toggled Profile Security', id, newLockState ? 'Locked' : 'Unlocked');
      }
   }
 
@@ -388,7 +397,7 @@ class SupabaseService {
         fullName: sub.studentName,
         slug: sub.studentName.toLowerCase().replace(/ /g, '-') + '-' + Date.now().toString().slice(-4),
         department: sub.department,
-        intake: 'Fall 2024',
+        intake: sub.content.intake || 'Batch 00', // Use submitted intake or default
         bio: sub.content.bio || '',
         avatarUrl: sub.content.avatarUrl,
         galleryImages: sub.content.galleryImages || [],
@@ -396,6 +405,7 @@ class SupabaseService {
         socialLinks: sub.content.socialLinks || [],
         contactEmail: sub.content.contactEmail,
         isFeatured: false,
+        isLocked: true, // Default to Secured
         status: 'active'
     };
     await supabase.from('students').insert(studentData);
