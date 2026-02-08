@@ -351,8 +351,12 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleToggleLock = async (id: string) => {
-      await api.toggleStudentLock(id);
-      refreshData();
+      try {
+          await api.toggleStudentLock(id);
+          await refreshData(); // Wait for data to refresh to show new state
+      } catch (e) {
+          alert("Failed to toggle security");
+      }
   }
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -384,9 +388,13 @@ const AdminDashboard: React.FC = () => {
   const handleUpdateProfile = async (e: React.FormEvent) => {
       e.preventDefault();
       if (currentUser) {
-          await api.updateAdminProfile(currentUser.id, profileForm);
-          alert('Profile updated');
-          window.location.reload(); 
+          try {
+             await api.updateAdminProfile(currentUser.id, profileForm);
+             alert('Profile updated! Changes will appear on Team page.');
+             window.location.reload(); 
+          } catch(e) {
+              alert("Update failed.");
+          }
       }
   };
 
@@ -461,187 +469,21 @@ const AdminDashboard: React.FC = () => {
 
         {/* Main Content */}
         <main className="flex-1 p-8 overflow-y-auto h-[calc(100vh-4rem)]">
-          
-          {/* OVERVIEW */}
-          {activeTab === 'overview' && (
-            <div className="space-y-6">
-              <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
-                   <div className="flex-shrink-0 bg-blue-500 rounded-md p-3"><Users className="h-6 w-6 text-white" /></div>
-                   <div className="ml-5"><div className="text-sm font-medium text-gray-500">Total Students</div><div className="text-lg font-medium text-gray-900">{stats.totalStudents}</div></div>
-                </div>
-                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
-                   <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3"><Bell className="h-6 w-6 text-white" /></div>
-                   <div className="ml-5"><div className="text-sm font-medium text-gray-500">Pending Approvals</div><div className="text-lg font-medium text-gray-900">{stats.pending}</div></div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SITE CONTENT TAB */}
-          {activeTab === 'content' && (
-              <div className="space-y-8">
-                  <h1 className="text-2xl font-bold text-gray-900">Site Content Management</h1>
-                  
-                  {/* Slideshow Manager */}
-                  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                      <div className="flex justify-between items-center mb-6">
-                          <div>
-                             <h3 className="text-lg font-medium">Homepage Slideshow</h3>
-                             <p className="text-sm text-gray-500">Manage the rotating images on the home page hero section (Max 5 images).</p>
-                          </div>
-                          <div className="relative">
-                              <input type="file" multiple accept="image/*" onChange={handleCampusImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                              <Button><Plus className="w-4 h-4 mr-2" /> Add Slides</Button>
-                          </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {campusImages.length === 0 ? (
-                              <div className="col-span-full text-center py-8 text-gray-400 bg-gray-50 rounded-lg border border-dashed">
-                                  No custom slides uploaded. Default image is active.
-                              </div>
-                          ) : (
-                              campusImages.map(img => (
-                                  <div key={img.id} className="relative group rounded-lg overflow-hidden h-40 bg-gray-100 border border-gray-200">
-                                      <img src={img.url} alt="Slide" className="w-full h-full object-cover" />
-                                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                          <button onClick={() => handleDeleteCampusImage(img.id)} className="text-white hover:text-red-400 p-2">
-                                              <Trash2 className="w-6 h-6" />
-                                          </button>
-                                      </div>
-                                  </div>
-                              ))
-                          )}
-                      </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {/* Logo Manager */}
-                      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                          <h3 className="text-lg font-medium mb-4">Website Logo</h3>
-                          <div className="flex items-center space-x-6">
-                              <div className="h-24 w-24 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 overflow-hidden">
-                                  {siteConfig.logoUrl ? (
-                                      <img src={siteConfig.logoUrl} alt="Logo" className="max-w-full max-h-full" />
-                                  ) : (
-                                      <span className="text-gray-400 text-xs">No Logo</span>
-                                  )}
-                              </div>
-                              <div className="flex-1 space-y-3">
-                                  <div className="relative">
-                                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                      <Button variant="secondary" className="w-full justify-center">
-                                          <Upload className="w-4 h-4 mr-2" /> Upload New Logo
-                                      </Button>
-                                  </div>
-                                  {siteConfig.logoUrl && (
-                                      <Button variant="danger" className="w-full justify-center" onClick={handleRemoveLogo}>
-                                          <Trash2 className="w-4 h-4 mr-2" /> Remove Logo
-                                      </Button>
-                                  )}
-                                  <p className="text-xs text-gray-500">Recommended size: 100x100px or larger. PNG preferred.</p>
-                              </div>
-                          </div>
-                      </div>
-
-                      {/* Footer Contact Info */}
-                      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                          <h3 className="text-lg font-medium mb-4">Footer Contact Info</h3>
-                          <form onSubmit={handleContactUpdate} className="space-y-4">
-                              <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                                      <MapPin className="w-3 h-3 mr-1" /> Address
-                                  </label>
-                                  <input 
-                                    type="text" 
-                                    className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
-                                    value={siteConfig.contact.address}
-                                    onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, address: e.target.value}})}
-                                  />
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                                          <Mail className="w-3 h-3 mr-1" /> Email
-                                      </label>
-                                      <input 
-                                        type="email" 
-                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
-                                        value={siteConfig.contact.email}
-                                        onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, email: e.target.value}})}
-                                      />
-                                  </div>
-                                  <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center">
-                                          <Phone className="w-3 h-3 mr-1" /> Phone
-                                      </label>
-                                      <input 
-                                        type="text" 
-                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
-                                        value={siteConfig.contact.phone}
-                                        onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, phone: e.target.value}})}
-                                      />
-                                  </div>
-                              </div>
-                              <Button type="submit" className="w-full">Save Contact Info</Button>
-                          </form>
-                      </div>
-                  </div>
-              </div>
-          )}
-
-          {activeTab === 'profile' && (
-              <div className="max-w-2xl">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h1>
-                  <div className="bg-white shadow rounded-lg p-6">
-                      <div className="flex items-center mb-6 pb-6 border-b border-gray-100">
-                          <img src={profileForm.avatarUrl} alt="" className="h-20 w-20 rounded-full border-2 border-gray-200 object-cover" />
-                          <div className="ml-6">
-                              <h2 className="text-xl font-bold">{currentUser.fullName}</h2>
-                              <div className="flex items-center mt-1 space-x-2">
-                                  <span className={`px-2 py-0.5 rounded text-xs text-white ${getRank(currentUser.activityScore).color}`}>
-                                      {getRank(currentUser.activityScore).name}
-                                  </span>
-                                  <span className="text-sm text-gray-500">{currentUser.activityScore} Activity Points</span>
-                              </div>
-                          </div>
-                      </div>
-                      <form onSubmit={handleUpdateProfile} className="space-y-4">
-                          <Input label="Full Name" value={profileForm.fullName} onChange={e => setProfileForm({...profileForm, fullName: e.target.value})} />
-                          <Input label="Job Title" value={profileForm.title} onChange={e => setProfileForm({...profileForm, title: e.target.value})} />
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Update Avatar</label>
-                              <input type="file" onChange={handleProfileAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                          </div>
-                          
-                          <Input 
-                            label="Linked Student Slug (Optional)" 
-                            value={profileForm.linkedStudentSlug} 
-                            onChange={handleProfileSlugChange} 
-                            placeholder="e.g. ahamed-alex-2107"
-                            helperText="Paste the full Profile URL or enter just the slug to make your team card clickable." 
-                          />
-                          
-                          <Button type="submit">Save Changes</Button>
-                      </form>
-                  </div>
-              </div>
-          )}
+          {/* ... existing code ... */}
           
           {activeTab === 'students' && (
             <div className="space-y-6">
                 <h1 className="text-2xl font-bold text-gray-900">Student Management</h1>
-                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+                {/* Added overflow-x-auto here for side-scrolling on mobile */}
+                <div className="bg-white shadow overflow-hidden sm:rounded-lg overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dept</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[200px]">Student</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase min-w-[150px]">Dept</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Security</th>
-                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase min-w-[180px]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -663,7 +505,7 @@ const AdminDashboard: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <button 
                                             onClick={() => handleToggleLock(student.id)}
-                                            className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full ${student.isLocked ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}
+                                            className={`flex items-center text-xs font-semibold px-2 py-1 rounded-full transition-colors ${student.isLocked ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
                                             title={student.isLocked ? "Profile is locked (Secured)" : "Profile is editable (Unsecured)"}
                                         >
                                             {student.isLocked ? <Lock className="w-3 h-3 mr-1"/> : <Unlock className="w-3 h-3 mr-1"/>}
@@ -673,13 +515,13 @@ const AdminDashboard: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                         <button 
                                             onClick={() => handleToggleSuspend(student.id)}
-                                            className={`${student.status === 'suspended' ? 'text-green-600' : 'text-orange-600'} hover:opacity-80 flex items-center float-right ml-4`}
+                                            className={`${student.status === 'suspended' ? 'text-green-600' : 'text-orange-600'} hover:opacity-80 inline-flex items-center ml-4`}
                                         >
                                             <Ban className="w-4 h-4 mr-1"/> {student.status === 'suspended' ? 'Activate' : 'Suspend'}
                                         </button>
                                         <button 
                                             onClick={() => handleDeleteStudent(student.id)}
-                                            className="text-red-600 hover:text-red-900 flex items-center float-right"
+                                            className="text-red-600 hover:text-red-900 inline-flex items-center ml-4"
                                         >
                                             <Trash2 className="w-4 h-4 mr-1"/> Delete
                                         </button>
@@ -691,6 +533,8 @@ const AdminDashboard: React.FC = () => {
                 </div>
             </div>
           )}
+
+          {/* ... existing code ... */}
         </main>
       </div>
     </div>

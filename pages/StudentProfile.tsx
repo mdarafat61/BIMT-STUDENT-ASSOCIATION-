@@ -14,6 +14,9 @@ const StudentProfile: React.FC = () => {
   useEffect(() => {
     const fetchStudent = async () => {
       if (slug) {
+        // Increment view count first (fire and forget)
+        api.incrementStudentViews(slug).catch(e => console.error(e));
+        
         const data = await api.getStudentBySlug(slug);
         setStudent(data || null);
       }

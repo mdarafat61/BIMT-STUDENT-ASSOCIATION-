@@ -20,20 +20,26 @@ const Notices: React.FC = () => {
   }, []);
 
   const handleDownload = (notice: Notice) => {
-    if (notice.attachmentUrl) {
+    if (!notice.attachmentUrl) return;
+
+    if (notice.attachmentUrl.startsWith('data:')) {
+         // Handle Base64 download
          const link = document.createElement('a');
          link.href = notice.attachmentUrl;
          // Simple mime check for extension
          const mime = notice.attachmentUrl.split(';')[0].split(':')[1];
          let ext = 'file';
          if (mime.includes('pdf')) ext = 'pdf';
-         else if (mime.includes('image')) ext = 'png'; // default to png if image
+         else if (mime.includes('image')) ext = 'png'; 
          else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
          
          link.download = `${notice.title.replace(/[^a-z0-9]/gi, '_')}.${ext}`;
          document.body.appendChild(link);
          link.click();
          document.body.removeChild(link);
+    } else {
+        // Handle External URL - Open in new tab to avoid CORS blocking download
+        window.open(notice.attachmentUrl, '_blank');
     }
   };
 

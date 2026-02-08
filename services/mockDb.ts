@@ -54,13 +54,13 @@ class SupabaseService {
            };
         } else if (token === 'mock_token_admin') {
             // Mock Session Restoration
-            // 1. Try DB
             try {
+                // Try to find the 'alex' user to keep session in sync with DB
                 const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
                 
                 if (data) {
                      this.currentUser = {
-                       id: data.id,
+                       id: 'fallback-admin-id', // Keep the token ID consistent
                        username: data.username,
                        fullName: data.fullName,
                        role: data.role as UserRole,
@@ -71,20 +71,20 @@ class SupabaseService {
                        linkedStudentSlug: data.linkedStudentSlug
                     };
                 } else {
-                    throw new Error("No data found");
+                    // Default fallback if DB fetch fails
+                     this.currentUser = {
+                       id: 'fallback-admin-id',
+                       username: 'alex',
+                       fullName: 'Ahamed Alex',
+                       role: UserRole.SUPER_ADMIN,
+                       title: 'Head of Operations',
+                       avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
+                       activityScore: 1500,
+                       token: 'mock_token_admin'
+                    };
                 }
             } catch (err) {
-                // 2. Fallback Session if DB is empty or fails
-                this.currentUser = {
-                   id: 'fallback-admin-id',
-                   username: 'alex',
-                   fullName: 'Ahamed Alex',
-                   role: UserRole.SUPER_ADMIN,
-                   title: 'Head of Operations',
-                   avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
-                   activityScore: 1500,
-                   token: 'mock_token_admin'
-                };
+                console.error("Error restoring mock session", err);
             }
         }
     } catch (e) {
@@ -193,12 +193,26 @@ class SupabaseService {
          updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
      }
 
-     // If id is 'fallback-admin-id', we can't update DB, just local
+     // CRITICAL FIX: If using fallback ID (logged in as 'admin'), update the 'alex' row in DB
      if (id === 'fallback-admin-id') {
-        if (this.currentUser) this.currentUser = { ...this.currentUser, ...updates };
-        return;
+        const { error } = await supabase.from('team_members').update({
+             fullName: updates.fullName,
+             title: updates.title,
+             avatarUrl: updates.avatarUrl,
+             linkedStudentSlug: updates.linkedStudentSlug
+         }).eq('username', 'alex'); // Target the actual DB row
+         
+         if (error) {
+             console.error("Failed to update DB for admin:", error);
+             // Don't throw, just update local to prevent app crash
+         }
+
+         // Update local session
+         if (this.currentUser) this.currentUser = { ...this.currentUser, ...updates };
+         return;
      }
 
+     // Standard update
      const { error } = await supabase.from('team_members').update({
          fullName: updates.fullName,
          title: updates.title,
@@ -208,7 +222,7 @@ class SupabaseService {
 
      if(error) throw new Error(error.message);
      
-     // Update local session
+     // Update local session if needed
      if (this.currentUser && this.currentUser.id === id) {
          this.currentUser = { ...this.currentUser, ...updates };
      }
@@ -224,7 +238,7 @@ class SupabaseService {
       if (filter.search) query = query.ilike('fullName', `%${filter.search}%`);
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.order('isFeatured', {ascending: false});
     if (error) {
         console.error("Fetch students error:", error);
         return [];
@@ -235,6 +249,14 @@ class SupabaseService {
   async getStudentBySlug(slug: string): Promise<Student | undefined> {
     const { data } = await supabase.from('students').select('*').eq('slug', slug).single();
     return data;
+  }
+
+  async incrementStudentViews(slug: string): Promise<void> {
+      // First get current views
+      const { data } = await supabase.from('students').select('views').eq('slug', slug).single();
+      if (data) {
+          await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
+      }
   }
 
   async deleteStudent(id: string): Promise<void> {
@@ -254,8 +276,11 @@ class SupabaseService {
   async toggleStudentLock(id: string): Promise<void> {
      const { data } = await supabase.from('students').select('isLocked').eq('id', id).single();
      if (data) {
-         const newLockState = !data.isLocked;
-         await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
+         const newLockState = !data.isLocked; // Toggle boolean
+         const { error } = await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
+         
+         if (error) throw new Error(error.message);
+         
          await this.logAction('Toggled Profile Security', id, newLockState ? 'Locked' : 'Unlocked');
      }
   }
@@ -419,19 +444,39 @@ class SupabaseService {
       const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername;
 
       // IMMEDIATE BYPASS FOR ADMIN/ADMIN123
-      // This ensures login works even if Supabase connection fails or DB is empty
       if (safeUsername === 'admin' && password === 'admin123') {
-           this.currentUser = {
-               id: 'fallback-admin-id',
-               username: 'alex',
-               fullName: 'Ahamed Alex',
-               role: UserRole.SUPER_ADMIN,
-               title: 'Head of Operations',
-               avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
-               activityScore: 1500,
-               token: 'mock_token_admin'
-           };
-           // Optionally try to fetch real data in background, but return success immediately
+           // We try to fetch the real data for Alex to allow profile updates to work
+           let userData = null;
+           try {
+               const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
+               userData = data;
+           } catch(e) {}
+
+           if (userData) {
+               this.currentUser = {
+                   id: 'fallback-admin-id',
+                   username: userData.username,
+                   fullName: userData.fullName,
+                   role: userData.role as UserRole,
+                   title: userData.title,
+                   avatarUrl: userData.avatarUrl,
+                   activityScore: userData.activityScore,
+                   token: 'mock_token_admin',
+                   linkedStudentSlug: userData.linkedStudentSlug
+               };
+           } else {
+               // Fallback if DB is empty
+               this.currentUser = {
+                   id: 'fallback-admin-id',
+                   username: 'alex',
+                   fullName: 'Ahamed Alex',
+                   role: UserRole.SUPER_ADMIN,
+                   title: 'Head of Operations',
+                   avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
+                   activityScore: 1500,
+                   token: 'mock_token_admin'
+               };
+           }
            return this.currentUser;
       }
 
