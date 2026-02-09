@@ -7,7 +7,7 @@ import Button from '../components/Button';
 import { api } from '../services/mockDb';
 
 const AdminLogin: React.FC = () => {
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,10 +44,6 @@ const AdminLogin: React.FC = () => {
         </h2>
         <div className="mt-2 text-center text-sm text-gray-400 space-y-1">
           <p>Authorized personnel only. All activities are logged.</p>
-          <p className="text-blue-400 font-mono text-xs">
-              Default Keys: <strong>admin / admin123</strong><br/>
-              Moderators: <strong>fatima / mod123</strong>
-          </p>
         </div>
       </div>
 
