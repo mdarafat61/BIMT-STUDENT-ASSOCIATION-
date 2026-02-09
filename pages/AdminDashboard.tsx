@@ -523,11 +523,17 @@ const AdminDashboard: React.FC = () => {
             <div className="space-y-6">
               <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
+                <div 
+                  onClick={() => setActiveTab('students')}
+                  className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center cursor-pointer hover:shadow-md transition-shadow"
+                >
                    <div className="flex-shrink-0 bg-blue-500 rounded-md p-3"><Users className="h-6 w-6 text-white" /></div>
                    <div className="ml-5"><div className="text-sm font-medium text-gray-500">Total Students</div><div className="text-lg font-medium text-gray-900">{stats.totalStudents}</div></div>
                 </div>
-                <div className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center">
+                <div 
+                  onClick={() => setActiveTab('submissions')}
+                  className="bg-white overflow-hidden shadow rounded-lg p-5 flex items-center cursor-pointer hover:shadow-md transition-shadow"
+                >
                    <div className="flex-shrink-0 bg-yellow-500 rounded-md p-3"><Bell className="h-6 w-6 text-white" /></div>
                    <div className="ml-5"><div className="text-sm font-medium text-gray-500">Pending Approvals</div><div className="text-lg font-medium text-gray-900">{stats.pending}</div></div>
                 </div>
