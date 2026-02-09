@@ -4,9 +4,9 @@
 -- Run this entire script in the SQL Editor of your Supabase Dashboard
 -- ====================================================================
 
--- QUICK FIX (If you already have data and don't want to reset):
--- Run this command separately to add the missing column:
+-- QUICK FIXES:
 -- ALTER TABLE students ADD COLUMN "isLocked" BOOLEAN DEFAULT true;
+-- ALTER TABLE team_members ADD COLUMN "password" TEXT;
 
 -- 1. DROP EXISTING TABLES (Clean Slate for Demo)
 DROP TABLE IF EXISTS audit_logs;
@@ -20,11 +20,12 @@ DROP TABLE IF EXISTS team_members;
 
 -- 2. CREATE TABLES
 
--- Team Members (New Table for Admin Display)
+-- Team Members (New Table for Admin Display & Auth)
 CREATE TABLE team_members (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     "fullName" TEXT NOT NULL,
-    username TEXT,
+    username TEXT UNIQUE, -- Username should be unique
+    "password" TEXT,      -- Storing plain text for this specific demo requirement (Use Auth or Hash in Prod)
     title TEXT,
     role TEXT, -- 'super_admin' or 'moderator'
     "avatarUrl" TEXT,
@@ -47,7 +48,7 @@ CREATE TABLE students (
     "contactEmail" TEXT,
     views INTEGER DEFAULT 0,
     "isFeatured" BOOLEAN DEFAULT false,
-    "isLocked" BOOLEAN DEFAULT true, -- Added Security Lock Field
+    "isLocked" BOOLEAN DEFAULT true, 
     status TEXT DEFAULT 'active',
     "createdAt" TIMESTAMPTZ DEFAULT now()
 );
@@ -133,6 +134,7 @@ ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 -- 5. RLS POLICIES
 
 -- Public Read Policies
+-- Important: For team_members, we allow read so login checks can happen (client-side filter applied for sensitive data)
 CREATE POLICY "Public read team" ON team_members FOR SELECT USING (true);
 CREATE POLICY "Public read students" ON students FOR SELECT USING (true);
 CREATE POLICY "Public read notices" ON notices FOR SELECT USING (true);
@@ -165,13 +167,14 @@ CREATE POLICY "Public Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_
 INSERT INTO site_config (id, contact) 
 VALUES (1, '{"address": "BIMT Campus, Dhaka, Bangladesh", "email": "contact@bimt.edu.bd", "phone": "+880 1712 345 678"}');
 
--- Team Members (You are Super Admin)
-INSERT INTO team_members ("fullName", username, title, role, "avatarUrl", "activityScore") VALUES
-('Ahamed Alex', 'alex', 'Head of Operations', 'super_admin', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop', 1500),
-('Fatima Begum', 'fatima', 'Student Welfare Lead', 'moderator', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop', 850),
-('Rahim Chowdhury', 'rahim', 'Event Coordinator', 'moderator', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop', 620),
-('Nadia Islam', 'nadia', 'Academic Affairs', 'moderator', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=400&fit=crop', 450),
-('Tanvir Ahmed', 'tanvir', 'Tech Support', 'moderator', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop', 300);
+-- Team Members (Initial Admins)
+-- Passwords are plaintext for this custom auth demo. In real apps, use Supabase Auth.
+INSERT INTO team_members ("fullName", username, "password", title, role, "avatarUrl", "activityScore") VALUES
+('Ahamed Alex', 'alex', 'admin123', 'Head of Operations', 'super_admin', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop', 1500),
+('Fatima Begum', 'fatima', 'mod123', 'Student Welfare Lead', 'moderator', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop', 850),
+('Rahim Chowdhury', 'rahim', 'mod123', 'Event Coordinator', 'moderator', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop', 620),
+('Nadia Islam', 'nadia', 'mod123', 'Academic Affairs', 'moderator', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=400&fit=crop', 450),
+('Tanvir Ahmed', 'tanvir', 'mod123', 'Tech Support', 'moderator', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop', 300);
 
 -- Students (Bengali Names)
 INSERT INTO students ("fullName", slug, department, intake, bio, "avatarUrl", status, "isFeatured", "isLocked", achievements, "socialLinks") VALUES

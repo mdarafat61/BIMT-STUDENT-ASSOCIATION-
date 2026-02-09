@@ -52,25 +52,16 @@ class SupabaseService {
                activityScore: 100,
                token: session.access_token
            };
-        } else if (token === 'mock_token_admin') {
-            // Mock Session Restoration
+        } else if (token && token.startsWith('mock_token_')) {
+            // Restore from custom token
+            // We assume the token contains the ID for simplicity in this demo: mock_token_USERID
+            const userId = token.replace('mock_token_', '');
+            
             try {
-                // Try to find the 'alex' user to keep session in sync with DB
-                const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
-                
-                if (data) {
-                     this.currentUser = {
-                       id: 'fallback-admin-id', 
-                       username: data.username,
-                       fullName: data.fullName,
-                       role: data.role as UserRole,
-                       title: data.title,
-                       avatarUrl: data.avatarUrl,
-                       activityScore: data.activityScore,
-                       token: 'mock_token_admin',
-                       linkedStudentSlug: data.linkedStudentSlug
-                    };
-                } else {
+                // Fetch user details to restore session
+                // Ensure we handle both 'admin' and DB IDs
+                if (userId === 'admin') {
+                     // Fallback for default hardcoded admin if database is empty/reset
                      this.currentUser = {
                        id: 'fallback-admin-id',
                        username: 'alex',
@@ -79,8 +70,23 @@ class SupabaseService {
                        title: 'Head of Operations',
                        avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
                        activityScore: 1500,
-                       token: 'mock_token_admin'
+                       token: token
                     };
+                } else {
+                    const { data } = await supabase.from('team_members').select('*').eq('id', userId).single();
+                    if (data) {
+                         this.currentUser = {
+                           id: data.id, 
+                           username: data.username,
+                           fullName: data.fullName,
+                           role: data.role as UserRole,
+                           title: data.title,
+                           avatarUrl: data.avatarUrl,
+                           activityScore: data.activityScore,
+                           token: token,
+                           linkedStudentSlug: data.linkedStudentSlug
+                        };
+                    }
                 }
             } catch (err) {
                 console.error("Error restoring mock session", err);
@@ -144,7 +150,11 @@ class SupabaseService {
 
   // --- Admin User / Team Management ---
   async getAdminUsers(): Promise<AdminUser[]> {
-      const { data } = await supabase.from('team_members').select('*').order('activityScore', {ascending: false});
+      // Explicitly select columns to exclude password
+      const { data } = await supabase
+        .from('team_members')
+        .select('id, fullName, username, title, role, avatarUrl, activityScore, linkedStudentSlug')
+        .order('activityScore', {ascending: false});
       
       let users = data?.map(u => ({
           id: u.id,
@@ -157,11 +167,10 @@ class SupabaseService {
           linkedStudentSlug: u.linkedStudentSlug
       })) || [];
 
+      // Merge fallback if not in DB (only if necessary)
       if (this.currentUser && this.currentUser.id === 'fallback-admin-id') {
-          const exists = users.find(u => u.username === this.currentUser?.username);
-          if (exists) {
-              Object.assign(exists, this.currentUser);
-          } else {
+          const exists = users.find(u => u.username === 'alex'); // Match default demo data
+          if (!exists) {
               users.push(this.currentUser);
           }
       }
@@ -174,9 +183,11 @@ class SupabaseService {
           user.avatarUrl = await this.uploadFile(user.avatarUrl, 'avatars');
       }
       
+      // INSERT including PASSWORD
       const { error } = await supabase.from('team_members').insert({
           fullName: user.fullName,
           username: user.username,
+          password: user.password, // IMPORTANT: Saving password for custom auth
           title: user.title,
           role: user.role,
           avatarUrl: user.avatarUrl,
@@ -200,16 +211,15 @@ class SupabaseService {
      if (id === 'fallback-admin-id') {
         if (this.currentUser) {
             this.currentUser = { ...this.currentUser, ...updates };
-            const { error } = await supabase.from('team_members')
+            // Try to sync with DB if alex exists
+             const { error } = await supabase.from('team_members')
                 .update({
                     fullName: updates.fullName,
                     title: updates.title,
                     avatarUrl: updates.avatarUrl,
                     linkedStudentSlug: updates.linkedStudentSlug
                 })
-                .eq('username', this.currentUser.username);
-                
-            if (error) console.warn("DB update failed (likely permission), but local state updated.");
+                .eq('username', 'alex');
         }
         return;
      }
@@ -469,85 +479,51 @@ class SupabaseService {
     await supabase.from('students').insert(studentData);
   }
 
-  // --- Auth ---
+  // --- Auth (UPDATED) ---
   async login(username: string, password: string): Promise<AdminUser | null> {
-      // Force Lowercase
       const safeUsername = username.trim().toLowerCase();
-      const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername;
+      const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername; // Legacy map
 
+      // 1. Check Custom DB Auth Table
       try {
-          const { data } = await supabase.auth.signInWithPassword({
-              email: `${safeUsername}@bimt.edu`, 
-              password: password
-          });
+          // Select password specifically to verify
+          const { data } = await supabase
+              .from('team_members')
+              .select('id, username, password, fullName, role, title, avatarUrl, activityScore, linkedStudentSlug')
+              .eq('username', safeUsername)
+              .single();
 
-          if (data.session) {
-              this.currentUser = {
-                   id: data.user.id,
-                   username: safeUsername,
-                   fullName: 'System Administrator',
-                   role: UserRole.SUPER_ADMIN,
-                   title: 'Head of Operations',
-                   avatarUrl: 'https://via.placeholder.com/150',
-                   activityScore: 100,
-                   token: data.session.access_token
-              };
-              return this.currentUser;
-          }
-      } catch(e) { console.log("Real auth skipped", e); }
-
-      if (safeUsername === 'admin' && password === 'admin123') {
-           let userData = null;
-           try {
-               const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
-               userData = data;
-           } catch(e) {}
-
-           if (userData) {
-               this.currentUser = {
-                   id: 'fallback-admin-id',
-                   username: userData.username,
-                   fullName: userData.fullName,
-                   role: userData.role as UserRole,
-                   title: userData.title,
-                   avatarUrl: userData.avatarUrl,
-                   activityScore: userData.activityScore,
-                   token: 'mock_token_admin',
-                   linkedStudentSlug: userData.linkedStudentSlug
-               };
-           } else {
-               this.currentUser = {
-                   id: 'fallback-admin-id',
-                   username: 'alex',
-                   fullName: 'Ahamed Alex',
-                   role: UserRole.SUPER_ADMIN,
-                   title: 'Head of Operations',
-                   avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
-                   activityScore: 1500,
-                   token: 'mock_token_admin'
-               };
-           }
-           return this.currentUser;
-      }
-      
-      if (password === 'mod123') {
-          try {
-              const { data: userData } = await supabase.from('team_members').select('*').eq('username', dbUsername).single();
-              if (userData) {
-                  this.currentUser = {
-                      id: userData.id,
-                      username: userData.username,
-                      fullName: userData.fullName,
-                      role: userData.role as UserRole,
-                      title: userData.title,
-                      avatarUrl: userData.avatarUrl,
-                      activityScore: userData.activityScore,
-                      token: 'mock_token_admin',
-                      linkedStudentSlug: userData.linkedStudentSlug
-                  };
-                  return this.currentUser;
+          if (data) {
+              if (data.password === password) {
+                   this.currentUser = {
+                       id: data.id,
+                       username: data.username,
+                       fullName: data.fullName,
+                       role: data.role as UserRole,
+                       title: data.title,
+                       avatarUrl: data.avatarUrl,
+                       activityScore: data.activityScore,
+                       token: 'mock_token_' + data.id, // Generate a simpler token mapping to ID
+                       linkedStudentSlug: data.linkedStudentSlug
+                   };
+                   return this.currentUser;
               }
-          } catch (e) {}
+          }
+      } catch(e) { /* Ignore query error if user not found */ }
+
+      // 2. Hardcoded Fallback (Only if 'alex' in DB was missing or connection fail)
+      if (safeUsername === 'admin' && password === 'admin123') {
+           this.currentUser = {
+               id: 'fallback-admin-id',
+               username: 'alex',
+               fullName: 'Ahamed Alex',
+               role: UserRole.SUPER_ADMIN,
+               title: 'Head of Operations',
+               avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
+               activityScore: 1500,
+               token: 'mock_token_admin'
+           };
+           return this.currentUser;
       }
       
       return null;
