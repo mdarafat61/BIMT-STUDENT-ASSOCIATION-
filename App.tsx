@@ -1,9 +1,11 @@
+
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Directory from './pages/Directory';
 import StudentProfile from './pages/StudentProfile';
+import EditProfile from './pages/EditProfile';
 import Resources from './pages/Resources';
 import Notices from './pages/Notices';
 import Submit from './pages/Submit';
@@ -27,6 +29,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/directory" element={<Directory />} />
                 <Route path="/directory/:slug" element={<StudentProfile />} />
+                <Route path="/edit-profile/:slug" element={<EditProfile />} />
                 <Route path="/resources" element={<Resources />} />
                 <Route path="/notices" element={<Notices />} />
                 <Route path="/submit" element={<Submit />} />

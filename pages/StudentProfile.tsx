@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Award, Globe, Github, Linkedin, Twitter, Eye, X, ZoomIn, Mail, Facebook, Instagram } from 'lucide-react';
+import { ArrowLeft, Calendar, Award, Globe, Github, Linkedin, Twitter, Eye, X, ZoomIn, Mail, Facebook, Instagram, Edit, Unlock } from 'lucide-react';
 import { api } from '../services/mockDb';
 import { Student } from '../types';
+import Button from '../components/Button';
 
 const StudentProfile: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -41,9 +42,20 @@ const StudentProfile: React.FC = () => {
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
-        <Link to="/directory" className="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors mb-8">
-            <ArrowLeft className="w-4 h-4 mr-2"/> Back to Directory
-        </Link>
+        <div className="flex justify-between items-center mb-8">
+            <Link to="/directory" className="inline-flex items-center text-gray-500 hover:text-blue-600 transition-colors">
+                <ArrowLeft className="w-4 h-4 mr-2"/> Back to Directory
+            </Link>
+
+            {/* Edit Button for Unlocked Profiles */}
+            {!student.isLocked && (
+                <Link to={`/edit-profile/${student.slug}`}>
+                    <Button variant="outline" className="border-green-500 text-green-600 hover:bg-green-50">
+                        <Edit className="w-4 h-4 mr-2" /> Edit Profile (Unsecured)
+                    </Button>
+                </Link>
+            )}
+        </div>
 
         <div className="md:flex gap-12">
           {/* Left Column: Avatar & Basic Info */}
@@ -108,6 +120,12 @@ const StudentProfile: React.FC = () => {
                     <Calendar className="w-4 h-4 mr-2" />
                     Member since {new Date(student.createdAt).getFullYear()}
                  </div>
+                 {!student.isLocked && (
+                    <div className="flex items-center text-sm text-green-600 mt-2 bg-green-50 p-2 rounded">
+                        <Unlock className="w-4 h-4 mr-2"/>
+                        <span>This profile is Unlocked. You can edit it.</span>
+                    </div>
+                 )}
             </div>
           </div>
 
