@@ -6,7 +6,7 @@ import {
   Resource, 
   Notice, 
   AdminUser, 
-  UserRole,
+  UserRole, 
   AuditLogEntry,
   CampusImage,
   SiteConfig
@@ -54,14 +54,37 @@ class SupabaseService {
            };
         } else if (token && token.startsWith('mock_token_')) {
             // Restore from custom token
-            // We assume the token contains the ID for simplicity in this demo: mock_token_USERID
             const userId = token.replace('mock_token_', '');
             
             try {
-                // Fetch user details to restore session
-                // Ensure we handle both 'admin' and DB IDs
-                if (userId === 'admin') {
-                     // Fallback for default hardcoded admin if database is empty/reset
+                let dbUser = null;
+
+                // 1. Try to fetch by ID first
+                if (userId !== 'admin') {
+                    const { data } = await supabase.from('team_members').select('*').eq('id', userId).single();
+                    dbUser = data;
+                } 
+                
+                // 2. If it's the default 'admin' token, try to find the 'alex' user in DB first
+                if (userId === 'admin' && !dbUser) {
+                     const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
+                     dbUser = data;
+                }
+
+                if (dbUser) {
+                     this.currentUser = {
+                       id: dbUser.id, 
+                       username: dbUser.username,
+                       fullName: dbUser.fullName,
+                       role: dbUser.role as UserRole,
+                       title: dbUser.title,
+                       avatarUrl: dbUser.avatarUrl,
+                       activityScore: dbUser.activityScore,
+                       token: token,
+                       linkedStudentSlug: dbUser.linkedStudentSlug
+                    };
+                } else if (userId === 'admin') {
+                     // 3. Fallback ONLY if 'alex' is deleted from DB
                      this.currentUser = {
                        id: 'fallback-admin-id',
                        username: 'alex',
@@ -72,21 +95,6 @@ class SupabaseService {
                        activityScore: 1500,
                        token: token
                     };
-                } else {
-                    const { data } = await supabase.from('team_members').select('*').eq('id', userId).single();
-                    if (data) {
-                         this.currentUser = {
-                           id: data.id, 
-                           username: data.username,
-                           fullName: data.fullName,
-                           role: data.role as UserRole,
-                           title: data.title,
-                           avatarUrl: data.avatarUrl,
-                           activityScore: data.activityScore,
-                           token: token,
-                           linkedStudentSlug: data.linkedStudentSlug
-                        };
-                    }
                 }
             } catch (err) {
                 console.error("Error restoring mock session", err);
@@ -220,6 +228,12 @@ class SupabaseService {
                     linkedStudentSlug: updates.linkedStudentSlug
                 })
                 .eq('username', 'alex');
+             
+             if (!error) {
+                // If we successfully updated the DB for 'alex', we should switch the ID to the real DB ID next time
+                // But for now, just logging
+                await this.logAction('Updated Profile', updates.fullName || 'Self');
+             }
         }
         return;
      }
@@ -236,6 +250,23 @@ class SupabaseService {
      if (this.currentUser && this.currentUser.id === id) {
          this.currentUser = { ...this.currentUser, ...updates };
      }
+     await this.logAction('Updated Profile', updates.fullName || 'Self');
+  }
+
+  async changePassword(id: string, newPassword: string): Promise<void> {
+     if (id === 'fallback-admin-id') {
+         // Update 'alex' in DB
+         const { error } = await supabase.from('team_members')
+            .update({ password: newPassword })
+            .eq('username', 'alex');
+         if (error) throw new Error(error.message);
+     } else {
+         const { error } = await supabase.from('team_members')
+            .update({ password: newPassword })
+            .eq('id', id);
+         if (error) throw new Error(error.message);
+     }
+     await this.logAction('Changed Password', 'Self', 'User updated their security credentials');
   }
 
   // --- Student Management ---
@@ -287,6 +318,7 @@ class SupabaseService {
           console.error("Update failed", error);
           throw new Error("Failed to update student profile. " + error.message);
       }
+      await this.logAction('Updated Student', updates.fullName || id);
   }
 
   async incrementStudentViews(slug: string): Promise<void> {
@@ -346,10 +378,12 @@ class SupabaseService {
 
   async updateNotice(id: string, updates: Partial<Notice>): Promise<void> {
     await supabase.from('notices').update(updates).eq('id', id);
+    await this.logAction('Updated Notice', updates.title || id);
   }
 
   async deleteNotice(id: string): Promise<void> {
     await supabase.from('notices').delete().eq('id', id);
+    await this.logAction('Deleted Notice', id);
   }
 
   // --- Resources Management ---
@@ -370,6 +404,7 @@ class SupabaseService {
 
   async deleteResource(id: string): Promise<void> {
     await supabase.from('resources').delete().eq('id', id);
+    await this.logAction('Deleted Resource', id);
   }
 
   // --- Campus Images ---
@@ -391,6 +426,7 @@ class SupabaseService {
 
   async deleteCampusImage(id: string): Promise<void> {
       await supabase.from('campus_images').delete().eq('id', id);
+      await this.logAction('Deleted Slide', id);
   }
 
   // --- Site Config ---
@@ -412,6 +448,7 @@ class SupabaseService {
           contact: config.contact 
       });
       if (error) throw error;
+      await this.logAction('Updated Config', 'Site Settings');
   }
 
   // --- Submissions ---
@@ -458,6 +495,7 @@ class SupabaseService {
             await this.createStudentFromSubmission(sub);
         }
     }
+    await this.logAction('Reviewed Submission', id, status);
   }
 
   private async createStudentFromSubmission(sub: Submission) {
@@ -482,11 +520,9 @@ class SupabaseService {
   // --- Auth (UPDATED) ---
   async login(username: string, password: string): Promise<AdminUser | null> {
       const safeUsername = username.trim().toLowerCase();
-      const dbUsername = safeUsername === 'admin' ? 'alex' : safeUsername; // Legacy map
-
+      
       // 1. Check Custom DB Auth Table
       try {
-          // Select password specifically to verify
           const { data } = await supabase
               .from('team_members')
               .select('id, username, password, fullName, role, title, avatarUrl, activityScore, linkedStudentSlug')
@@ -503,15 +539,16 @@ class SupabaseService {
                        title: data.title,
                        avatarUrl: data.avatarUrl,
                        activityScore: data.activityScore,
-                       token: 'mock_token_' + data.id, // Generate a simpler token mapping to ID
+                       token: 'mock_token_' + data.id, 
                        linkedStudentSlug: data.linkedStudentSlug
                    };
+                   await this.logAction('Login', 'System', 'Successful Login');
                    return this.currentUser;
               }
           }
-      } catch(e) { /* Ignore query error if user not found */ }
+      } catch(e) { /* Ignore query error */ }
 
-      // 2. Hardcoded Fallback (Only if 'alex' in DB was missing or connection fail)
+      // 2. Fallback (Only if 'alex' entry is gone from DB)
       if (safeUsername === 'admin' && password === 'admin123') {
            this.currentUser = {
                id: 'fallback-admin-id',

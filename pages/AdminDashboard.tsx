@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Bell, LogOut, Check, X, Shield, Activity, Trash2, Ban, Plus, Settings, Briefcase, Pin, PinOff, Upload, Book, File, Camera, Image as ImageIcon, Globe, Phone, Mail, MapPin, Lock, Unlock } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Bell, LogOut, Check, X, Shield, Activity, Trash2, Ban, Plus, Settings, Briefcase, Pin, PinOff, Upload, Book, File, Camera, Image as ImageIcon, Globe, Phone, Mail, MapPin, Lock, Unlock, Key } from 'lucide-react';
 import { api } from '../services/mockDb';
 import { Submission, Student, AuditLogEntry, UserRole, AdminUser, Notice, Resource, Department, CampusImage, SiteConfig } from '../types';
 import Badge from '../components/Badge';
@@ -37,6 +37,7 @@ const AdminDashboard: React.FC = () => {
   // Forms
   const [newUser, setNewUser] = useState({ username: '', password: '', role: 'moderator', fullName: '', title: '', avatarUrl: '' });
   const [profileForm, setProfileForm] = useState({ fullName: '', title: '', avatarUrl: '', linkedStudentSlug: '' });
+  const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
   
   // Notice Form
   const [noticeForm, setNoticeForm] = useState<{id?: string, title: string, content: string, type: 'campus' | 'exam' | 'event' | 'course', isPinned: boolean, attachmentUrl: string}>({
@@ -412,11 +413,36 @@ const AdminDashboard: React.FC = () => {
       if (currentUser) {
           try {
              await api.updateAdminProfile(currentUser.id, profileForm);
+             
+             // Update local state immediately so UI reflects changes without reload
+             const updatedUser = { ...currentUser, ...profileForm };
+             setCurrentUser(updatedUser);
+             
              alert('Profile updated! Changes will appear on Team page.');
-             window.location.reload(); 
           } catch(e) {
               alert("Update failed.");
           }
+      }
+  };
+  
+  const handleChangePassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!currentUser) return;
+      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+          alert("Passwords do not match");
+          return;
+      }
+      if (passwordForm.newPassword.length < 6) {
+          alert("Password must be at least 6 characters");
+          return;
+      }
+      
+      try {
+          await api.changePassword(currentUser.id, passwordForm.newPassword);
+          setPasswordForm({ newPassword: '', confirmPassword: '' });
+          alert("Password changed successfully.");
+      } catch(e: any) {
+          alert("Failed to change password: " + e.message);
       }
   };
 
@@ -802,39 +828,73 @@ const AdminDashboard: React.FC = () => {
           )}
           
           {activeTab === 'profile' && (
-              <div className="max-w-2xl">
-                  <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h1>
-                  <div className="bg-white shadow rounded-lg p-6">
-                      <div className="flex items-center mb-6 pb-6 border-b border-gray-100">
-                          <img src={profileForm.avatarUrl} alt="" className="h-20 w-20 rounded-full border-2 border-gray-200 object-cover" />
-                          <div className="ml-6">
-                              <h2 className="text-xl font-bold">{currentUser.fullName}</h2>
-                              <div className="flex items-center mt-1 space-x-2">
-                                  <span className={`px-2 py-0.5 rounded text-xs text-white ${getRank(currentUser.activityScore).color}`}>
-                                      {getRank(currentUser.activityScore).name}
-                                  </span>
-                                  <span className="text-sm text-gray-500">{currentUser.activityScore} Activity Points</span>
+              <div className="max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div>
+                      <h1 className="text-2xl font-bold text-gray-900 mb-6">Profile Settings</h1>
+                      <div className="bg-white shadow rounded-lg p-6 mb-8">
+                          <div className="flex items-center mb-6 pb-6 border-b border-gray-100">
+                              <img src={profileForm.avatarUrl} alt="" className="h-20 w-20 rounded-full border-2 border-gray-200 object-cover" />
+                              <div className="ml-6">
+                                  <h2 className="text-xl font-bold">{currentUser.fullName}</h2>
+                                  <div className="flex items-center mt-1 space-x-2">
+                                      <span className={`px-2 py-0.5 rounded text-xs text-white ${getRank(currentUser.activityScore).color}`}>
+                                          {getRank(currentUser.activityScore).name}
+                                      </span>
+                                      <span className="text-sm text-gray-500">{currentUser.activityScore} Activity Points</span>
+                                  </div>
                               </div>
                           </div>
+                          <form onSubmit={handleUpdateProfile} className="space-y-4">
+                              <Input label="Full Name" value={profileForm.fullName} onChange={e => setProfileForm({...profileForm, fullName: e.target.value})} />
+                              <Input label="Job Title" value={profileForm.title} onChange={e => setProfileForm({...profileForm, title: e.target.value})} />
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Update Avatar</label>
+                                  <input type="file" onChange={handleProfileAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
+                              </div>
+                              
+                              <Input 
+                                label="Linked Student Slug (Optional)" 
+                                value={profileForm.linkedStudentSlug} 
+                                onChange={handleProfileSlugChange} 
+                                placeholder="e.g. ahamed-alex-2107"
+                                helperText="Paste the full Profile URL or enter just the slug to make your team card clickable." 
+                              />
+                              
+                              <Button type="submit">Save Changes</Button>
+                          </form>
                       </div>
-                      <form onSubmit={handleUpdateProfile} className="space-y-4">
-                          <Input label="Full Name" value={profileForm.fullName} onChange={e => setProfileForm({...profileForm, fullName: e.target.value})} />
-                          <Input label="Job Title" value={profileForm.title} onChange={e => setProfileForm({...profileForm, title: e.target.value})} />
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Update Avatar</label>
-                              <input type="file" onChange={handleProfileAvatar} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                          </div>
-                          
-                          <Input 
-                            label="Linked Student Slug (Optional)" 
-                            value={profileForm.linkedStudentSlug} 
-                            onChange={handleProfileSlugChange} 
-                            placeholder="e.g. ahamed-alex-2107"
-                            helperText="Paste the full Profile URL or enter just the slug to make your team card clickable." 
-                          />
-                          
-                          <Button type="submit">Save Changes</Button>
-                      </form>
+                  </div>
+
+                  <div>
+                       <h1 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h1>
+                       <div className="bg-white shadow rounded-lg p-6">
+                           <h3 className="text-lg font-medium mb-4 flex items-center text-gray-800">
+                               <Key className="w-5 h-5 mr-2 text-gray-500" /> Change Password
+                           </h3>
+                           <form onSubmit={handleChangePassword} className="space-y-4">
+                               <Input 
+                                    label="New Password" 
+                                    type="password" 
+                                    required 
+                                    value={passwordForm.newPassword}
+                                    onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+                                />
+                                <Input 
+                                    label="Confirm New Password" 
+                                    type="password" 
+                                    required
+                                    value={passwordForm.confirmPassword}
+                                    onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+                                />
+                                <Button type="submit" variant="outline">Update Password</Button>
+                           </form>
+                           <div className="mt-6 pt-6 border-t border-gray-100">
+                               <p className="text-xs text-gray-500">
+                                   Ensure your password is at least 6 characters long. 
+                                   Security changes are logged for audit purposes.
+                               </p>
+                           </div>
+                       </div>
                   </div>
               </div>
           )}
