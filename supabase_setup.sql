@@ -4,6 +4,10 @@
 -- Run this entire script in the SQL Editor of your Supabase Dashboard
 -- ====================================================================
 
+-- QUICK FIX (If you already have data and don't want to reset):
+-- Run this command separately to add the missing column:
+-- ALTER TABLE students ADD COLUMN "isLocked" BOOLEAN DEFAULT true;
+
 -- 1. DROP EXISTING TABLES (Clean Slate for Demo)
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS site_config;
@@ -43,6 +47,7 @@ CREATE TABLE students (
     "contactEmail" TEXT,
     views INTEGER DEFAULT 0,
     "isFeatured" BOOLEAN DEFAULT false,
+    "isLocked" BOOLEAN DEFAULT true, -- Added Security Lock Field
     status TEXT DEFAULT 'active',
     "createdAt" TIMESTAMPTZ DEFAULT now()
 );
@@ -169,16 +174,16 @@ INSERT INTO team_members ("fullName", username, title, role, "avatarUrl", "activ
 ('Tanvir Ahmed', 'tanvir', 'Tech Support', 'moderator', 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop', 300);
 
 -- Students (Bengali Names)
-INSERT INTO students ("fullName", slug, department, intake, bio, "avatarUrl", status, "isFeatured", achievements, "socialLinks") VALUES
-('Arafat Rahman', 'arafat-rahman', 'Computer Science', 'Fall 2023', 'Aspiring Full Stack Developer. Love building tools that solve real-world problems. Organizer of the BIMT CodeFest.', 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400&h=400&fit=crop', 'active', true, '[{"title": "Hackathon Winner", "date": "2023-11-20", "description": "1st place in Inter-Uni Hackathon"}]', '[{"platform": "github", "url": "https://github.com"}]'),
+INSERT INTO students ("fullName", slug, department, intake, bio, "avatarUrl", status, "isFeatured", "isLocked", achievements, "socialLinks") VALUES
+('Arafat Rahman', 'arafat-rahman', 'Computer Science', 'Fall 2023', 'Aspiring Full Stack Developer. Love building tools that solve real-world problems. Organizer of the BIMT CodeFest.', 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=400&h=400&fit=crop', 'active', true, true, '[{"title": "Hackathon Winner", "date": "2023-11-20", "description": "1st place in Inter-Uni Hackathon"}]', '[{"platform": "github", "url": "https://github.com"}]'),
 
-('Sumaiya Akter', 'sumaiya-akter', 'Business Administration', 'Spring 2024', 'Focused on Digital Marketing and Entrepreneurship. Currently working on a startup idea for campus food delivery.', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop', 'active', true, '[]', '[{"platform": "linkedin", "url": "https://linkedin.com"}]'),
+('Sumaiya Akter', 'sumaiya-akter', 'Business Administration', 'Spring 2024', 'Focused on Digital Marketing and Entrepreneurship. Currently working on a startup idea for campus food delivery.', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop', 'active', true, true, '[]', '[{"platform": "linkedin", "url": "https://linkedin.com"}]'),
 
-('Sahil Hasan', 'sahil-hasan', 'Engineering', 'Fall 2022', 'Robotics enthusiast. Lead member of the BIMT Robotics Club. Working on an autonomous drone project.', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop', 'active', false, '[{"title": "Robotics Fair Runner-up", "date": "2023-08-10", "description": "National Science Fair"}]', '[]'),
+('Sahil Hasan', 'sahil-hasan', 'Engineering', 'Fall 2022', 'Robotics enthusiast. Lead member of the BIMT Robotics Club. Working on an autonomous drone project.', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop', 'active', false, true, '[{"title": "Robotics Fair Runner-up", "date": "2023-08-10", "description": "National Science Fair"}]', '[]'),
 
-('Nusrat Jahan', 'nusrat-jahan', 'Arts & Humanities', 'Spring 2023', 'Passionate about Bengali Literature and History. Editor of the "BIMT Voice" campus magazine.', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop', 'active', true, '[{"title": "Best Writer Award", "date": "2023-05-15", "description": "Annual literature fest"}]', '[]'),
+('Nusrat Jahan', 'nusrat-jahan', 'Arts & Humanities', 'Spring 2023', 'Passionate about Bengali Literature and History. Editor of the "BIMT Voice" campus magazine.', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop', 'active', true, true, '[{"title": "Best Writer Award", "date": "2023-05-15", "description": "Annual literature fest"}]', '[]'),
 
-('Jamal Uddin', 'jamal-uddin', 'Medical Sciences', 'Fall 2021', 'Public health researcher. Conducted a campus-wide survey on mental health awareness.', 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&h=400&fit=crop', 'graduated', false, '[]', '[]');
+('Jamal Uddin', 'jamal-uddin', 'Medical Sciences', 'Fall 2021', 'Public health researcher. Conducted a campus-wide survey on mental health awareness.', 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&h=400&fit=crop', 'graduated', false, true, '[]', '[]');
 
 -- Notices
 INSERT INTO notices (title, content, type, "isPinned", "postedAt") VALUES
@@ -209,4 +214,3 @@ INSERT INTO campus_images (url) VALUES
 ('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80'),
 ('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80'),
 ('https://images.unsplash.com/photo-1562774053-701939374585?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
-

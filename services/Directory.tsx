@@ -2,9 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Filter, Eye } from 'lucide-react';
+import Input from '../components/Input';
+import Badge from '../components/Badge';
 import { api } from '../services/mockDb';
 import { Student, Department } from '../types';
-import Badge from '../components/Badge';
 
 const Directory: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
