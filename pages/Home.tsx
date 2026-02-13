@@ -17,13 +17,41 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [students, notices, adminList, images] = await Promise.all([
+      const [allStudents, notices, adminList, images] = await Promise.all([
         api.getStudents(),
         api.getNotices(),
         api.getAdminUsers(),
         api.getCampusImages()
       ]);
-      setFeaturedStudents(students.filter(s => s.isFeatured).slice(0, 3));
+
+      // Calculate Rank for Featured Students
+      // Metric: (Avg CGPA / 4 * 50) + (Achievements * 5) + (Awards * 5) + (Views * 0.1)
+      const rankedStudents = allStudents.map(student => {
+          let totalGpa = 0;
+          let count = 0;
+          if (student.cgpa) {
+              student.cgpa.forEach(s => {
+                  const val = parseFloat(s.gpa);
+                  if (!isNaN(val)) {
+                      totalGpa += val;
+                      count++;
+                  }
+              });
+          }
+          const avgGpa = count > 0 ? totalGpa / count : 0;
+          
+          const score = 
+            (avgGpa * 25) + 
+            (student.achievements.length * 10) + 
+            (student.views * 0.05);
+            
+          return { ...student, rankScore: score };
+      });
+
+      // Sort by rankScore DESC
+      rankedStudents.sort((a, b) => b.rankScore - a.rankScore);
+
+      setFeaturedStudents(rankedStudents.slice(0, 3));
       setLatestNotices(notices.slice(0, 3));
       setAdmins(adminList.slice(0, 4));
       setCampusImages(images);
@@ -184,7 +212,7 @@ const Home: React.FC = () => {
           ) : (
             <div className="grid gap-8 md:grid-cols-3">
               {featuredStudents.map((student) => (
-                <div key={student.id} className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-all duration-300">
+                <div key={student.id} className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-all duration-300 border border-gray-200">
                   <div className="h-32 bg-gradient-to-r from-blue-800 to-blue-600"></div>
                   <div className="px-6 pb-6">
                     <div className="relative flex justify-center">

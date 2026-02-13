@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -18,8 +19,8 @@ const Input: React.FC<InputProps> = ({ label, error, helperText, className = '',
       )}
       <input
         id={inputId}
-        className={`appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
-          error ? 'border-red-300' : 'border-gray-300'
+        className={`appearance-none block w-full px-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-800 text-white ${
+          error ? 'border-red-300' : 'border-gray-600'
         } ${className}`}
         {...props}
       />

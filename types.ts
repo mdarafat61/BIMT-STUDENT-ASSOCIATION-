@@ -26,6 +26,20 @@ export interface SocialLink {
   url: string;
 }
 
+export interface SemesterCGPA {
+  semester: number;
+  gpa: string; // Using string to handle inputs easily, converted to float for calc
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  provider: string; // e.g., Coursera, Udemy, BIMT
+  startDate: string;
+  endDate: string;
+  certificateUrl?: string; // Base64 or URL
+}
+
 export interface Student {
   id: string;
   fullName: string;
@@ -36,11 +50,13 @@ export interface Student {
   avatarUrl: string;
   galleryImages: string[];
   achievements: Achievement[];
+  courses: Course[]; // New
+  cgpa: SemesterCGPA[]; // New
   socialLinks: SocialLink[];
-  contactEmail?: string; // Made public
+  contactEmail?: string; 
   views: number;
   isFeatured: boolean;
-  isLocked: boolean; // New field for Secured/Unsecured
+  isLocked: boolean; 
   status: 'active' | 'graduated' | 'suspended';
   createdAt: string;
 }
@@ -53,12 +69,14 @@ export interface Submission {
   department: Department;
   content: {
     // For Biographies/Profiles
-    intake?: string; // Added intake to submission content
+    intake?: string; 
     bio?: string;
     avatarUrl?: string;
     galleryImages?: string[];
     socialLinks?: SocialLink[];
     achievements?: Achievement[];
+    courses?: Course[]; // New
+    cgpa?: SemesterCGPA[]; // New
     contactEmail?: string;
     
     // For Resources
@@ -93,7 +111,7 @@ export interface Notice {
   isArchived: boolean;
   postedAt: string;
   expiresAt?: string;
-  attachmentUrl?: string; // Base64 string for file
+  attachmentUrl?: string; 
 }
 
 export interface CampusImage {
@@ -115,14 +133,14 @@ export interface SiteConfig {
 export interface AdminUser {
   id: string;
   username: string;
-  password?: string; // Only used for auth logic, not exposed
+  password?: string; 
   fullName: string;
-  title: string; // e.g., "Senior Moderator"
+  title: string; 
   avatarUrl: string;
   role: UserRole;
   token?: string;
-  activityScore: number; // Calculated based on logs
-  linkedStudentSlug?: string; // Link to public profile
+  activityScore: number; 
+  linkedStudentSlug?: string; 
 }
 
 export interface AuditLogEntry {

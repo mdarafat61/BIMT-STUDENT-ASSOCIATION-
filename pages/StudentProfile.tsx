@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, Award, Globe, Github, Linkedin, Twitter, Eye, X, ZoomIn, Mail, Facebook, Instagram, Edit, Unlock } from 'lucide-react';
+import { ArrowLeft, Calendar, Award, Globe, Github, Linkedin, Twitter, Eye, X, ZoomIn, Mail, Facebook, Instagram, Edit, Unlock, GraduationCap, BookOpen, Download } from 'lucide-react';
 import { api } from '../services/mockDb';
 import { Student } from '../types';
 import Button from '../components/Button';
@@ -25,6 +25,24 @@ const StudentProfile: React.FC = () => {
     };
     fetchStudent();
   }, [slug]);
+
+  const handleCertDownload = (url: string, title: string) => {
+      if (url.startsWith('data:')) {
+         const link = document.createElement('a');
+         link.href = url;
+         // Attempt to guess extension or default to pdf/jpg based on header
+         const mime = url.split(';')[0].split(':')[1];
+         let ext = 'pdf';
+         if (mime.includes('image')) ext = mime.split('/')[1];
+         
+         link.download = `${title.replace(/[^a-z0-9]/gi, '_')}_Certificate.${ext}`;
+         document.body.appendChild(link);
+         link.click();
+         document.body.removeChild(link);
+      } else {
+         window.open(url, '_blank');
+      }
+  };
 
   if (loading) return <div className="p-10 text-center">Loading profile...</div>;
   if (!student) return <div className="p-10 text-center">Student not found</div>;
@@ -140,6 +158,23 @@ const StudentProfile: React.FC = () => {
               </div>
             </section>
 
+             {/* CGPA Section */}
+            {student.cgpa && student.cgpa.length > 0 && (
+                <section className="mb-10">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                        <GraduationCap className="w-6 h-6 mr-2 text-blue-600"/> Academic Performance
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        {student.cgpa.map((sem) => (
+                            <div key={sem.semester} className="bg-white border border-gray-200 rounded-lg p-4 text-center shadow-sm">
+                                <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Semester {sem.semester}</div>
+                                <div className="text-2xl font-bold text-blue-700">{sem.gpa}</div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* Gallery */}
             {student.galleryImages.length > 0 && (
                 <section className="mb-10">
@@ -165,9 +200,44 @@ const StudentProfile: React.FC = () => {
                 </section>
             )}
 
+            {/* Courses & Certifications */}
+            {student.courses && student.courses.length > 0 && (
+                <section className="mb-10">
+                    <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                        <BookOpen className="w-6 h-6 mr-2 text-blue-600"/> Courses & Certifications
+                    </h2>
+                    <div className="space-y-4">
+                        {student.courses.map((course, idx) => (
+                            <div key={idx} className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between">
+                                <div className="mb-4 sm:mb-0">
+                                    <h4 className="font-bold text-gray-900 text-lg">{course.title}</h4>
+                                    <p className="text-blue-600 font-medium text-sm">{course.provider}</p>
+                                    <div className="flex items-center text-xs text-gray-500 mt-2">
+                                        <Calendar className="w-3 h-3 mr-1"/>
+                                        {course.startDate && <span>{new Date(course.startDate).toLocaleDateString()}</span>}
+                                        {course.endDate && <span> - {new Date(course.endDate).toLocaleDateString()}</span>}
+                                    </div>
+                                </div>
+                                {course.certificateUrl && (
+                                    <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        onClick={() => handleCertDownload(course.certificateUrl!, course.title)}
+                                    >
+                                        <Download className="w-4 h-4 mr-2"/> Certificate
+                                    </Button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* Achievements */}
             <section>
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Achievements</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+                  <Award className="w-6 h-6 mr-2 text-yellow-500"/> Achievements
+              </h2>
               {student.achievements.length > 0 ? (
                 <div className="grid gap-4">
                   {student.achievements.map((ach) => (

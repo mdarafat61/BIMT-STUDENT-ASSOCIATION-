@@ -23,7 +23,30 @@ const Directory: React.FC = () => {
         dept: filters.dept === 'All' ? undefined : filters.dept,
         intake: filters.intake === '' ? undefined : filters.intake
       });
-      setStudents(data);
+
+      // Sorting Logic: Alphabetical First, then Rank (Score)
+      const rankedData = data.map(s => {
+          let totalGpa = 0;
+          let count = 0;
+          if (s.cgpa) {
+              s.cgpa.forEach(i => { const val = parseFloat(i.gpa); if(!isNaN(val)) { totalGpa+=val; count++ } });
+          }
+          const avgGpa = count > 0 ? totalGpa/count : 0;
+          const score = (avgGpa * 25) + (s.achievements.length * 10) + (s.views * 0.05);
+          return { ...s, rankScore: score };
+      });
+
+      rankedData.sort((a, b) => {
+          const nameA = a.fullName.toUpperCase();
+          const nameB = b.fullName.toUpperCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          
+          // Names are equal (unlikely), fallback to rank
+          return b.rankScore - a.rankScore; 
+      });
+
+      setStudents(rankedData);
       setLoading(false);
     };
     
@@ -54,7 +77,7 @@ const Directory: React.FC = () => {
               <input
                 type="text"
                 placeholder="Search by name or bio..."
-                className="pl-10 block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                className="pl-10 block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
               />
@@ -64,7 +87,7 @@ const Directory: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
             <select
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+              className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
               value={filters.dept}
               onChange={(e) => handleFilterChange('dept', e.target.value)}
             >
@@ -80,7 +103,7 @@ const Directory: React.FC = () => {
             <input
                type="text"
                placeholder="e.g. Batch 25"
-               className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+               className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                value={filters.intake}
                onChange={(e) => handleFilterChange('intake', e.target.value)}
             />

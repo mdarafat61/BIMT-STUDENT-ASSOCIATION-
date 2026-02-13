@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, AlertCircle, Save, ArrowLeft } from 'lucide-react';
+import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, AlertCircle, Save, ArrowLeft, GraduationCap, BookOpen } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { Department, SocialLink, Achievement, Student } from '../types';
+import { Department, SocialLink, Achievement, Student, SemesterCGPA, Course } from '../types';
 import { api } from '../services/mockDb';
 
 const EditProfile: React.FC = () => {
@@ -32,6 +32,10 @@ const EditProfile: React.FC = () => {
 
   const [socials, setSocials] = useState<SocialLink[]>([]);
   const [achievements, setAchievements] = useState<Partial<Achievement>[]>([]);
+  const [courses, setCourses] = useState<Partial<Course>[]>([]);
+  const [cgpa, setCgpa] = useState<SemesterCGPA[]>(
+      Array.from({ length: 8 }, (_, i) => ({ semester: i + 1, gpa: '' }))
+  );
 
   useEffect(() => {
       const fetchStudent = async () => {
@@ -57,6 +61,16 @@ const EditProfile: React.FC = () => {
               });
               setSocials(data.socialLinks);
               setAchievements(data.achievements);
+              
+              if (data.courses) setCourses(data.courses);
+              
+              if (data.cgpa && data.cgpa.length > 0) {
+                  const mergedCgpa = Array.from({ length: 8 }, (_, i) => {
+                      const found = data.cgpa.find(c => c.semester === i + 1);
+                      return found ? found : { semester: i + 1, gpa: '' };
+                  });
+                  setCgpa(mergedCgpa);
+              }
           }
           setLoading(false);
       };
@@ -80,6 +94,17 @@ const EditProfile: React.FC = () => {
     });
   };
 
+  const handleCgpaChange = (index: number, value: string) => {
+      if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
+      if (parseFloat(value) > 4.0) return; 
+      
+      setCgpa(prev => {
+          const newCgpa = [...prev];
+          newCgpa[index] = { ...newCgpa[index], gpa: value };
+          return newCgpa;
+      });
+  };
+
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -89,12 +114,13 @@ const EditProfile: React.FC = () => {
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'gallery', index?: number) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'gallery' | 'courseCert', index?: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File is too large. Please select a file under 5MB.");
+    // 20MB Limit
+    if (file.size > 20 * 1024 * 1024) {
+      alert("File is too large. Max 20MB.");
       return;
     }
 
@@ -109,6 +135,12 @@ const EditProfile: React.FC = () => {
           newGallery[index] = base64;
           return { ...prev, galleryImages: newGallery };
         });
+      } else if (type === 'courseCert' && typeof index === 'number') {
+          setCourses(prev => {
+              const newCourses = [...prev];
+              newCourses[index] = { ...newCourses[index], certificateUrl: base64 };
+              return newCourses;
+          });
       }
     } catch (err) {
       console.error("Error reading file", err);
@@ -127,6 +159,8 @@ const EditProfile: React.FC = () => {
         const cleanGallery = media.galleryImages.filter(img => img.trim() !== '');
         const cleanSocials = socials.filter(s => s.url.trim() !== '');
         const cleanAchievements = achievements.filter(a => a.title?.trim() !== '') as Achievement[];
+        const cleanCourses = courses.filter(c => c.title?.trim() !== '') as Course[];
+        const cleanCgpa = cgpa.filter(c => c.gpa !== '');
 
         await api.updateStudent(student.id, {
             fullName: basicInfo.fullName,
@@ -138,12 +172,8 @@ const EditProfile: React.FC = () => {
             galleryImages: cleanGallery,
             socialLinks: cleanSocials,
             achievements: cleanAchievements,
-            // We assume the profile stays unlocked or locks automatically? 
-            // The request says "submitted ... auto secured". Since this is an edit of an existing one, 
-            // we will keep the current lock state (unlocked) so they can edit again, or lock it?
-            // Let's keep it unlocked until admin locks it, or lock it to require approval for next edit.
-            // For now, let's keep it as is (Unlocked) to allow corrections, or lock it.
-            // Let's lock it to be safe as per "secured with no edit options" pattern.
+            courses: cleanCourses,
+            cgpa: cleanCgpa,
             isLocked: true 
         });
 
@@ -199,7 +229,7 @@ const EditProfile: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                         <select
-                            className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                            className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                             value={basicInfo.department}
                             onChange={(e) => setBasicInfo({ ...basicInfo, department: e.target.value as Department })}
                         >
@@ -229,12 +259,99 @@ const EditProfile: React.FC = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Biography</label>
                     <textarea
                         rows={4}
-                        className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        className="appearance-none block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-800 text-white"
                         required
                         value={basicInfo.bio}
                         onChange={(e) => setBasicInfo({ ...basicInfo, bio: e.target.value })}
                     />
                 </div>
+            </div>
+
+            {/* CGPA */}
+            <div className="space-y-4">
+                 <h3 className="text-lg font-medium text-gray-900 border-b pb-2 flex items-center">
+                    <GraduationCap className="w-5 h-5 mr-2 text-gray-500"/> Academic Results (CGPA)
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {cgpa.map((sem, idx) => (
+                        <div key={idx}>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Semester {sem.semester}</label>
+                            <input
+                                type="text"
+                                placeholder="0.00"
+                                className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm border p-2 text-center bg-gray-800 text-white"
+                                value={sem.gpa}
+                                onChange={(e) => handleCgpaChange(idx, e.target.value)}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Courses */}
+            <div className="space-y-4">
+                <h3 className="text-lg font-medium text-gray-900 border-b pb-2 flex items-center">
+                    <BookOpen className="w-5 h-5 mr-2 text-gray-500"/> Courses & Certifications
+                </h3>
+                
+                {courses.map((course, idx) => (
+                     <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-2 relative">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                            <Input
+                                placeholder="Course Title"
+                                value={course.title}
+                                onChange={(e) => handleArrayChange(setCourses, idx, 'title', e.target.value)}
+                            />
+                            <Input
+                                placeholder="Provider (e.g. Coursera)"
+                                value={course.provider}
+                                onChange={(e) => handleArrayChange(setCourses, idx, 'provider', e.target.value)}
+                            />
+                         </div>
+                         <div className="grid grid-cols-2 gap-3 mb-3">
+                             <div>
+                                 <label className="block text-xs text-gray-500 mb-1">Start Date</label>
+                                 <input
+                                    type="date"
+                                    className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                    value={course.startDate}
+                                    onChange={(e) => handleArrayChange(setCourses, idx, 'startDate', e.target.value)}
+                                 />
+                             </div>
+                             <div>
+                                 <label className="block text-xs text-gray-500 mb-1">End Date</label>
+                                 <input
+                                    type="date"
+                                    className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                    value={course.endDate}
+                                    onChange={(e) => handleArrayChange(setCourses, idx, 'endDate', e.target.value)}
+                                 />
+                             </div>
+                         </div>
+                         
+                         <div>
+                             <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 20MB)</label>
+                             <input 
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                className="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50 border rounded p-1"
+                                onChange={(e) => handleFileChange(e, 'courseCert', idx)}
+                             />
+                             {course.certificateUrl && <p className="text-xs text-green-600 mt-1">File Attached</p>}
+                         </div>
+
+                         <button type="button" onClick={() => handleRemoveRow(setCourses, idx)} className="absolute top-2 right-2 text-red-500 hover:text-red-700">
+                            <Trash2 size={16} />
+                         </button>
+                     </div>
+                ))}
+                <button 
+                    type="button" 
+                    onClick={() => handleAddRow(setCourses, { title: '', provider: '', startDate: '', endDate: '', certificateUrl: '' })}
+                    className="text-sm text-blue-600 font-medium flex items-center"
+                >
+                    <Plus size={16} className="mr-1"/> Add Course
+                </button>
             </div>
 
             {/* 2. Media Uploads */}
@@ -297,7 +414,7 @@ const EditProfile: React.FC = () => {
                 {socials.map((social, idx) => (
                      <div key={idx} className="flex gap-2 mb-2 items-start">
                          <select
-                            className="w-1/3 rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                            className="w-1/3 rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                             value={social.platform}
                             onChange={(e) => handleArrayChange(setSocials, idx, 'platform', e.target.value)}
                          >
@@ -311,7 +428,7 @@ const EditProfile: React.FC = () => {
                          <input
                             type="text"
                             placeholder="Profile URL"
-                            className="flex-1 rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                            className="flex-1 rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                             value={social.url}
                             onChange={(e) => handleArrayChange(setSocials, idx, 'url', e.target.value)}
                          />
@@ -341,13 +458,13 @@ const EditProfile: React.FC = () => {
                             <input
                                 type="text"
                                 placeholder="Award Title (e.g. Dean's List)"
-                                className="rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                 value={ach.title}
                                 onChange={(e) => handleArrayChange(setAchievements, idx, 'title', e.target.value)}
                             />
                             <input
                                 type="date"
-                                className="rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                 value={ach.date}
                                 onChange={(e) => handleArrayChange(setAchievements, idx, 'date', e.target.value)}
                             />
@@ -355,7 +472,7 @@ const EditProfile: React.FC = () => {
                          <textarea
                             rows={2}
                             placeholder="Description"
-                            className="w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                            className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                             value={ach.description}
                             onChange={(e) => handleArrayChange(setAchievements, idx, 'description', e.target.value)}
                          />

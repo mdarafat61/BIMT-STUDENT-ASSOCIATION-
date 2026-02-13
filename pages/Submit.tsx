@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload, AlertCircle } from 'lucide-react';
+import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload, AlertCircle, BookOpen, GraduationCap } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
-import { Department, SocialLink, Achievement } from '../types';
+import { Department, SocialLink, Achievement, Course, SemesterCGPA } from '../types';
 import { api } from '../services/mockDb';
 
 const Submit: React.FC = () => {
@@ -15,8 +15,8 @@ const Submit: React.FC = () => {
   // Form State
   const [basicInfo, setBasicInfo] = useState({
     fullName: '',
-    department: Department.MT, // Default to first enum value
-    intake: '', // New Intake field
+    department: Department.MT, 
+    intake: '', 
     bio: '',
     email: '',
     resourceTitle: '',
@@ -31,6 +31,12 @@ const Submit: React.FC = () => {
 
   const [socials, setSocials] = useState<SocialLink[]>([{ platform: 'linkedin', url: '' }]);
   const [achievements, setAchievements] = useState<Partial<Achievement>[]>([{ title: '', date: '', description: '' }]);
+  
+  // New State for Courses and CGPA
+  const [courses, setCourses] = useState<Partial<Course>[]>([{ title: '', provider: '', startDate: '', endDate: '', certificateUrl: '' }]);
+  const [cgpa, setCgpa] = useState<SemesterCGPA[]>(
+      Array.from({ length: 8 }, (_, i) => ({ semester: i + 1, gpa: '' }))
+  );
 
   // Handlers
   const handleAddRow = (setter: React.Dispatch<React.SetStateAction<any[]>>, emptyItem: any) => {
@@ -49,6 +55,18 @@ const Submit: React.FC = () => {
     });
   };
 
+  const handleCgpaChange = (index: number, value: string) => {
+      // Allow only numbers and decimals
+      if (value !== '' && !/^\d*\.?\d*$/.test(value)) return;
+      if (parseFloat(value) > 4.0) return; // Basic validation
+      
+      setCgpa(prev => {
+          const newCgpa = [...prev];
+          newCgpa[index] = { ...newCgpa[index], gpa: value };
+          return newCgpa;
+      });
+  };
+
   // Helper to read file as Base64
   const readFileAsBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -59,13 +77,14 @@ const Submit: React.FC = () => {
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'resource' | 'gallery', index?: number) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'resource' | 'gallery' | 'courseCert', index?: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Basic size check (5MB limit)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("File is too large. Please select a file under 5MB.");
+    // Size limit check (20MB)
+    const limit = 20 * 1024 * 1024;
+    if (file.size > limit) {
+      alert("File is too large. Max 20MB allowed.");
       return;
     }
 
@@ -82,6 +101,12 @@ const Submit: React.FC = () => {
           newGallery[index] = base64;
           return { ...prev, galleryImages: newGallery };
         });
+      } else if (type === 'courseCert' && typeof index === 'number') {
+          setCourses(prev => {
+              const newCourses = [...prev];
+              newCourses[index] = { ...newCourses[index], certificateUrl: base64 };
+              return newCourses;
+          });
       }
     } catch (err) {
       console.error("Error reading file", err);
@@ -99,12 +124,17 @@ const Submit: React.FC = () => {
         const cleanGallery = media.galleryImages.filter(img => img.trim() !== '');
         const cleanSocials = socials.filter(s => s.url.trim() !== '');
         const cleanAchievements = achievements.filter(a => a.title?.trim() !== '') as Achievement[];
+        
+        // Clean courses: must have title and provider
+        const cleanCourses = courses.filter(c => c.title?.trim() !== '' && c.provider?.trim() !== '') as Course[];
+        // Clean CGPA: remove empty entries for submission content
+        const cleanCgpa = cgpa.filter(c => c.gpa !== '');
 
         const submissionContent = submissionType === 'resource' 
           ? { 
               title: basicInfo.resourceTitle, 
               description: basicInfo.resourceDesc,
-              downloadUrl: media.resourceFile, // Using base64 as download link
+              downloadUrl: media.resourceFile, 
               intake: basicInfo.intake
             }
           : { 
@@ -114,6 +144,8 @@ const Submit: React.FC = () => {
               galleryImages: cleanGallery,
               socialLinks: cleanSocials,
               achievements: cleanAchievements,
+              courses: cleanCourses,
+              cgpa: cleanCgpa,
               contactEmail: basicInfo.email
             };
 
@@ -183,7 +215,7 @@ const Submit: React.FC = () => {
                 <AlertCircle className="w-5 h-5 mr-2 flex-shrink-0" />
                 <div>
                     <p className="font-bold">Submission Failed</p>
-                    <p>{error.includes('row-level security') ? "Database policy violation. The administrator needs to run the setup SQL script." : error}</p>
+                    <p>{error}</p>
                 </div>
             </div>
         )}
@@ -203,7 +235,7 @@ const Submit: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                         <select
-                            className="block w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                            className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                             value={basicInfo.department}
                             onChange={(e) => setBasicInfo({ ...basicInfo, department: e.target.value as Department })}
                         >
@@ -236,7 +268,7 @@ const Submit: React.FC = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Biography</label>
                             <textarea
                                 rows={4}
-                                className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="appearance-none block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-800 text-white"
                                 placeholder="Tell us about your academic journey..."
                                 required
                                 value={basicInfo.bio}
@@ -267,7 +299,7 @@ const Submit: React.FC = () => {
                             <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                             <textarea
                                 rows={3}
-                                className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="appearance-none block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-800 text-white"
                                 required
                                 value={basicInfo.resourceDesc}
                                 onChange={(e) => setBasicInfo({ ...basicInfo, resourceDesc: e.target.value })}
@@ -276,6 +308,98 @@ const Submit: React.FC = () => {
                      </>
                 )}
             </div>
+
+            {/* NEW: CGPA Section */}
+            {submissionType === 'biography' && (
+                <div className="space-y-4">
+                     <h3 className="text-lg font-medium text-gray-900 border-b pb-2 flex items-center">
+                        <GraduationCap className="w-5 h-5 mr-2 text-gray-500"/> Academic Results (CGPA)
+                    </h3>
+                    <p className="text-sm text-gray-500">Enter results for semesters you have completed (Scale of 4.00).</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {cgpa.map((sem, idx) => (
+                            <div key={idx}>
+                                <label className="block text-xs font-medium text-gray-500 mb-1">Semester {sem.semester}</label>
+                                <input
+                                    type="text"
+                                    placeholder="0.00"
+                                    className="block w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm border p-2 text-center bg-gray-800 text-white"
+                                    value={sem.gpa}
+                                    onChange={(e) => handleCgpaChange(idx, e.target.value)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* NEW: Courses Section */}
+            {submissionType === 'biography' && (
+                <div className="space-y-4">
+                    <h3 className="text-lg font-medium text-gray-900 border-b pb-2 flex items-center">
+                        <BookOpen className="w-5 h-5 mr-2 text-gray-500"/> Courses & Certifications
+                    </h3>
+                    
+                    {courses.map((course, idx) => (
+                         <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-2 relative">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <Input
+                                    placeholder="Course Title"
+                                    value={course.title}
+                                    onChange={(e) => handleArrayChange(setCourses, idx, 'title', e.target.value)}
+                                />
+                                <Input
+                                    placeholder="Provider (e.g. Coursera)"
+                                    value={course.provider}
+                                    onChange={(e) => handleArrayChange(setCourses, idx, 'provider', e.target.value)}
+                                />
+                             </div>
+                             <div className="grid grid-cols-2 gap-3 mb-3">
+                                 <div>
+                                     <label className="block text-xs text-gray-500 mb-1">Start Date</label>
+                                     <input
+                                        type="date"
+                                        className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                        value={course.startDate}
+                                        onChange={(e) => handleArrayChange(setCourses, idx, 'startDate', e.target.value)}
+                                     />
+                                 </div>
+                                 <div>
+                                     <label className="block text-xs text-gray-500 mb-1">End Date</label>
+                                     <input
+                                        type="date"
+                                        className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                        value={course.endDate}
+                                        onChange={(e) => handleArrayChange(setCourses, idx, 'endDate', e.target.value)}
+                                     />
+                                 </div>
+                             </div>
+                             
+                             <div>
+                                 <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 20MB)</label>
+                                 <input 
+                                    type="file"
+                                    accept=".pdf,.jpg,.jpeg,.png"
+                                    className="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50 border rounded p-1"
+                                    onChange={(e) => handleFileChange(e, 'courseCert', idx)}
+                                 />
+                                 {course.certificateUrl && <p className="text-xs text-green-600 mt-1">File Attached</p>}
+                             </div>
+
+                             <button type="button" onClick={() => handleRemoveRow(setCourses, idx)} className="absolute top-2 right-2 text-red-500 hover:text-red-700">
+                                <Trash2 size={16} />
+                             </button>
+                         </div>
+                    ))}
+                    <button 
+                        type="button" 
+                        onClick={() => handleAddRow(setCourses, { title: '', provider: '', startDate: '', endDate: '', certificateUrl: '' })}
+                        className="text-sm text-blue-600 font-medium flex items-center"
+                    >
+                        <Plus size={16} className="mr-1"/> Add Course
+                    </button>
+                </div>
+            )}
 
             {/* 2. Media Uploads (Profile Only) */}
             {submissionType === 'biography' && (
@@ -337,7 +461,7 @@ const Submit: React.FC = () => {
                     {socials.map((social, idx) => (
                          <div key={idx} className="flex gap-2 mb-2 items-start">
                              <select
-                                className="w-1/3 rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                className="w-1/3 rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                 value={social.platform}
                                 onChange={(e) => handleArrayChange(setSocials, idx, 'platform', e.target.value)}
                              >
@@ -351,7 +475,7 @@ const Submit: React.FC = () => {
                              <input
                                 type="text"
                                 placeholder="Profile URL"
-                                className="flex-1 rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                className="flex-1 rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                 value={social.url}
                                 onChange={(e) => handleArrayChange(setSocials, idx, 'url', e.target.value)}
                              />
@@ -383,13 +507,13 @@ const Submit: React.FC = () => {
                                 <input
                                     type="text"
                                     placeholder="Award Title (e.g. Dean's List)"
-                                    className="rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                    className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                     value={ach.title}
                                     onChange={(e) => handleArrayChange(setAchievements, idx, 'title', e.target.value)}
                                 />
                                 <input
                                     type="date"
-                                    className="rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                    className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                     value={ach.date}
                                     onChange={(e) => handleArrayChange(setAchievements, idx, 'date', e.target.value)}
                                 />
@@ -397,7 +521,7 @@ const Submit: React.FC = () => {
                              <textarea
                                 rows={2}
                                 placeholder="Description"
-                                className="w-full rounded-md border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2"
+                                className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
                                 value={ach.description}
                                 onChange={(e) => handleArrayChange(setAchievements, idx, 'description', e.target.value)}
                              />

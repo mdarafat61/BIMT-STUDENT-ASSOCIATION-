@@ -9,7 +9,8 @@ import {
   UserRole, 
   AuditLogEntry,
   CampusImage,
-  SiteConfig
+  SiteConfig,
+  Course
 } from '../types';
 
 // Convert DataURI to Blob for uploading
@@ -128,6 +129,8 @@ class SupabaseService {
           if (file.startsWith('data:')) {
               fileToUpload = dataURLtoBlob(file);
               fileName += '.jpg'; // Assume jpg for base64
+              // Note: If PDF, this simple extension logic needs improvement in production, 
+              // but for this mock setup, we primarily handle images or rely on Supabase detection
           } else {
               return file; // Already a URL
           }
@@ -158,7 +161,6 @@ class SupabaseService {
 
   // --- Admin User / Team Management ---
   async getAdminUsers(): Promise<AdminUser[]> {
-      // Explicitly select columns to exclude password
       const { data } = await supabase
         .from('team_members')
         .select('id, fullName, username, title, role, avatarUrl, activityScore, linkedStudentSlug')
@@ -175,9 +177,8 @@ class SupabaseService {
           linkedStudentSlug: u.linkedStudentSlug
       })) || [];
 
-      // Merge fallback if not in DB (only if necessary)
       if (this.currentUser && this.currentUser.id === 'fallback-admin-id') {
-          const exists = users.find(u => u.username === 'alex'); // Match default demo data
+          const exists = users.find(u => u.username === 'alex'); 
           if (!exists) {
               users.push(this.currentUser);
           }
@@ -191,11 +192,10 @@ class SupabaseService {
           user.avatarUrl = await this.uploadFile(user.avatarUrl, 'avatars');
       }
       
-      // INSERT including PASSWORD
       const { error } = await supabase.from('team_members').insert({
           fullName: user.fullName,
           username: user.username,
-          password: user.password, // IMPORTANT: Saving password for custom auth
+          password: user.password,
           title: user.title,
           role: user.role,
           avatarUrl: user.avatarUrl,
@@ -219,7 +219,6 @@ class SupabaseService {
      if (id === 'fallback-admin-id') {
         if (this.currentUser) {
             this.currentUser = { ...this.currentUser, ...updates };
-            // Try to sync with DB if alex exists
              const { error } = await supabase.from('team_members')
                 .update({
                     fullName: updates.fullName,
@@ -230,8 +229,6 @@ class SupabaseService {
                 .eq('username', 'alex');
              
              if (!error) {
-                // If we successfully updated the DB for 'alex', we should switch the ID to the real DB ID next time
-                // But for now, just logging
                 await this.logAction('Updated Profile', updates.fullName || 'Self');
              }
         }
@@ -255,7 +252,6 @@ class SupabaseService {
 
   async changePassword(id: string, newPassword: string): Promise<void> {
      if (id === 'fallback-admin-id') {
-         // Update 'alex' in DB
          const { error } = await supabase.from('team_members')
             .update({ password: newPassword })
             .eq('username', 'alex');
@@ -279,20 +275,32 @@ class SupabaseService {
       if (filter.search) query = query.ilike('fullName', `%${filter.search}%`);
     }
 
-    const { data, error } = await query.order('isFeatured', {ascending: false});
+    const { data, error } = await query;
     if (error) {
         console.error("Fetch students error:", error);
         return [];
     }
-    return data as Student[];
+
+    // Default processing for fields that might be missing in older records
+    return data.map((s: any) => ({
+        ...s,
+        cgpa: s.cgpa || [],
+        courses: s.courses || []
+    })) as Student[];
   }
 
   async getStudentBySlug(slug: string): Promise<Student | undefined> {
     const { data } = await supabase.from('students').select('*').eq('slug', slug).single();
-    return data;
+    if(data) {
+        return {
+            ...data,
+            cgpa: data.cgpa || [],
+            courses: data.courses || []
+        };
+    }
+    return undefined;
   }
 
-  // NEW: Update student details for unlocked profiles
   async updateStudent(id: string, updates: Partial<Student>): Promise<void> {
       // 1. Handle File Uploads
       if (updates.avatarUrl && updates.avatarUrl.startsWith('data:')) {
@@ -311,6 +319,19 @@ class SupabaseService {
           updates.galleryImages = newGallery;
       }
 
+      // Handle Course Certificates
+      if (updates.courses) {
+          const processedCourses: Course[] = [];
+          for (const course of updates.courses) {
+              let certUrl = course.certificateUrl;
+              if (certUrl && certUrl.startsWith('data:')) {
+                  certUrl = await this.uploadFile(certUrl, 'certificates');
+              }
+              processedCourses.push({ ...course, certificateUrl: certUrl });
+          }
+          updates.courses = processedCourses;
+      }
+
       // 2. Perform Update
       const { error } = await supabase.from('students').update(updates).eq('id', id);
 
@@ -325,8 +346,6 @@ class SupabaseService {
       try {
         const { data } = await supabase.from('students').select('views').eq('slug', slug).single();
         if (data) {
-            // NOTE: This usually fails if RLS doesn't allow public updates.
-            // In a real app, use an RPC function: await supabase.rpc('increment_views', { slug_input: slug });
             await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
         }
       } catch (e) {
@@ -353,9 +372,7 @@ class SupabaseService {
      if (data) {
          const newLockState = !data.isLocked; 
          const { error } = await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
-         
          if (error) throw new Error(error.message);
-         
          await this.logAction('Toggled Profile Security', id, newLockState ? 'Locked' : 'Unlocked');
      }
   }
@@ -460,7 +477,7 @@ class SupabaseService {
   async createSubmission(submission: any): Promise<void> {
     const content = { ...submission.content };
     
-    // Process File Uploads first
+    // Process File Uploads
     if (content.avatarUrl?.startsWith('data:')) {
         content.avatarUrl = await this.uploadFile(content.avatarUrl, 'avatars');
     }
@@ -477,6 +494,19 @@ class SupabaseService {
             }
         }
         content.galleryImages = newGallery;
+    }
+    
+    // Process Course Certificates in Submission
+    if (content.courses) {
+        const processedCourses: Course[] = [];
+        for (const course of content.courses) {
+            let certUrl = course.certificateUrl;
+            if (certUrl && certUrl.startsWith('data:')) {
+                certUrl = await this.uploadFile(certUrl, 'certificates');
+            }
+            processedCourses.push({ ...course, certificateUrl: certUrl });
+        }
+        content.courses = processedCourses;
     }
 
     const { error } = await supabase.from('submissions').insert({ ...submission, content });
@@ -508,6 +538,8 @@ class SupabaseService {
         avatarUrl: sub.content.avatarUrl,
         galleryImages: sub.content.galleryImages || [],
         achievements: sub.content.achievements || [],
+        courses: sub.content.courses || [],
+        cgpa: sub.content.cgpa || [],
         socialLinks: sub.content.socialLinks || [],
         contactEmail: sub.content.contactEmail,
         isFeatured: false,
@@ -521,7 +553,6 @@ class SupabaseService {
   async login(username: string, password: string): Promise<AdminUser | null> {
       const safeUsername = username.trim().toLowerCase();
       
-      // 1. Check Custom DB Auth Table
       try {
           const { data } = await supabase
               .from('team_members')
@@ -548,7 +579,6 @@ class SupabaseService {
           }
       } catch(e) { /* Ignore query error */ }
 
-      // 2. Fallback (Only if 'alex' entry is gone from DB)
       if (safeUsername === 'admin' && password === 'admin123') {
            this.currentUser = {
                id: 'fallback-admin-id',
@@ -566,7 +596,6 @@ class SupabaseService {
       return null;
   }
 
-  // --- Public Getters (Rest) ---
   async getAuditLogs(): Promise<AuditLogEntry[]> { 
       const { data } = await supabase.from('audit_logs').select('*').order('timestamp', {ascending: false});
       return data || [];

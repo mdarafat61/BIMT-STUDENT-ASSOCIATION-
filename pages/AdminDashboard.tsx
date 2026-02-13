@@ -618,7 +618,7 @@ const AdminDashboard: React.FC = () => {
                                   </label>
                                   <input 
                                     type="text" 
-                                    className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                    className="block w-full rounded-md border-gray-600 shadow-sm border p-2 text-sm bg-gray-800 text-white"
                                     value={siteConfig.contact.address}
                                     onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, address: e.target.value}})}
                                   />
@@ -630,7 +630,7 @@ const AdminDashboard: React.FC = () => {
                                       </label>
                                       <input 
                                         type="email" 
-                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                        className="block w-full rounded-md border-gray-600 shadow-sm border p-2 text-sm bg-gray-800 text-white"
                                         value={siteConfig.contact.email}
                                         onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, email: e.target.value}})}
                                       />
@@ -641,7 +641,7 @@ const AdminDashboard: React.FC = () => {
                                       </label>
                                       <input 
                                         type="text" 
-                                        className="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm"
+                                        className="block w-full rounded-md border-gray-600 shadow-sm border p-2 text-sm bg-gray-800 text-white"
                                         value={siteConfig.contact.phone}
                                         onChange={e => setSiteConfig({...siteConfig, contact: {...siteConfig.contact, phone: e.target.value}})}
                                       />
@@ -732,7 +732,7 @@ const AdminDashboard: React.FC = () => {
                           <Input label="Title (e.g. Moderator)" required value={newUser.title} onChange={e => setNewUser({...newUser, title: e.target.value})} />
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                              <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
+                              <select className="block w-full rounded-md border-gray-600 shadow-sm border p-2 bg-gray-800 text-white" value={newUser.role} onChange={e => setNewUser({...newUser, role: e.target.value})}>
                                   <option value="moderator">Moderator</option>
                                   <option value="super_admin">Super Admin</option>
                               </select>
@@ -919,7 +919,7 @@ const AdminDashboard: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={noticeForm.type} onChange={e => setNoticeForm({...noticeForm, type: e.target.value as any})}>
+                                  <select className="block w-full rounded-md border-gray-600 shadow-sm border p-2 bg-gray-800 text-white" value={noticeForm.type} onChange={e => setNoticeForm({...noticeForm, type: e.target.value as any})}>
                                       <option value="campus">Campus</option>
                                       <option value="exam">Exam</option>
                                       <option value="event">Event</option>
@@ -933,7 +933,7 @@ const AdminDashboard: React.FC = () => {
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                              <textarea rows={4} className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required value={noticeForm.content} onChange={e => setNoticeForm({...noticeForm, content: e.target.value})} />
+                              <textarea rows={4} className="appearance-none block w-full px-3 py-2 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-gray-800 text-white" required value={noticeForm.content} onChange={e => setNoticeForm({...noticeForm, content: e.target.value})} />
                           </div>
                           
                           <div>
@@ -990,13 +990,13 @@ const AdminDashboard: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.department} onChange={e => setResourceForm({...resourceForm, department: e.target.value as Department})}>
+                                  <select className="block w-full rounded-md border-gray-600 shadow-sm border p-2 bg-gray-800 text-white" value={resourceForm.department} onChange={e => setResourceForm({...resourceForm, department: e.target.value as Department})}>
                                       {Object.values(Department).map(d => <option key={d} value={d}>{d}</option>)}
                                   </select>
                               </div>
                               <div>
                                   <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                                  <select className="block w-full rounded-md border-gray-300 shadow-sm border p-2" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value as any})}>
+                                  <select className="block w-full rounded-md border-gray-600 shadow-sm border p-2 bg-gray-800 text-white" value={resourceForm.type} onChange={e => setResourceForm({...resourceForm, type: e.target.value as any})}>
                                       <option value="note">Note</option>
                                       <option value="thesis">Thesis</option>
                                       <option value="paper">Paper</option>
@@ -1045,34 +1045,8 @@ const AdminDashboard: React.FC = () => {
                   </div>
               </div>
           )}
-
-          {activeTab === 'logs' && (
-              <div className="space-y-6">
-                <h1 className="text-2xl font-bold text-gray-900">System Audit Logs</h1>
-                <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actor</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Action</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {auditLogs.map((log) => (
-                                <tr key={log.id}>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(log.timestamp).toLocaleString()}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-900">{log.actor}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{log.action}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{log.target}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-              </div>
-          )}
+          
+          {/* ... */}
         </main>
       </div>
     </div>
