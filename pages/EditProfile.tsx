@@ -118,9 +118,9 @@ const EditProfile: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 20MB Limit
-    if (file.size > 20 * 1024 * 1024) {
-      alert("File is too large. Max 20MB.");
+    // Standardized to 15MB
+    if (file.size > 15 * 1024 * 1024) {
+      alert("File is too large. Max 15MB allowed.");
       return;
     }
 
@@ -330,7 +330,7 @@ const EditProfile: React.FC = () => {
                          </div>
                          
                          <div>
-                             <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 20MB)</label>
+                             <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 15MB)</label>
                              <input 
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png"
@@ -361,7 +361,7 @@ const EditProfile: React.FC = () => {
                 </h3>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture (Max 15MB)</label>
                   <input 
                     type="file"
                     accept="image/*"
@@ -377,7 +377,7 @@ const EditProfile: React.FC = () => {
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Gallery Images</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Gallery Images (Max 15MB each)</label>
                     {media.galleryImages.map((img, idx) => (
                         <div key={idx} className="flex gap-2 mb-2 items-center">
                             <input 

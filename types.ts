@@ -28,16 +28,26 @@ export interface SocialLink {
 
 export interface SemesterCGPA {
   semester: number;
-  gpa: string; // Using string to handle inputs easily, converted to float for calc
+  gpa: string; 
 }
 
 export interface Course {
   id: string;
   title: string;
-  provider: string; // e.g., Coursera, Udemy, BIMT
+  provider: string; 
   startDate: string;
   endDate: string;
-  certificateUrl?: string; // Base64 or URL
+  certificateUrl?: string; 
+}
+
+export interface CampusMemory {
+  id: string;
+  year: number;
+  title: string;
+  description: string;
+  images: string[];
+  date: string;
+  createdAt: string;
 }
 
 export interface Student {
@@ -50,8 +60,8 @@ export interface Student {
   avatarUrl: string;
   galleryImages: string[];
   achievements: Achievement[];
-  courses: Course[]; // New
-  cgpa: SemesterCGPA[]; // New
+  courses: Course[]; 
+  cgpa: SemesterCGPA[]; 
   socialLinks: SocialLink[];
   contactEmail?: string; 
   views: number;
@@ -61,25 +71,21 @@ export interface Student {
   createdAt: string;
 }
 
-// Updated Submission Interface
 export interface Submission {
   id: string;
   type: 'profile_update' | 'resource' | 'biography';
   studentName: string;
   department: Department;
   content: {
-    // For Biographies/Profiles
     intake?: string; 
     bio?: string;
     avatarUrl?: string;
     galleryImages?: string[];
     socialLinks?: SocialLink[];
     achievements?: Achievement[];
-    courses?: Course[]; // New
-    cgpa?: SemesterCGPA[]; // New
+    courses?: Course[]; 
+    cgpa?: SemesterCGPA[]; 
     contactEmail?: string;
-    
-    // For Resources
     title?: string;
     description?: string;
     downloadUrl?: string;
@@ -129,7 +135,6 @@ export interface SiteConfig {
   };
 }
 
-// Updated Admin User
 export interface AdminUser {
   id: string;
   username: string;

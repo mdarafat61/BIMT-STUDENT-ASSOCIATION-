@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, BookOpen, User, ClipboardList, School } from 'lucide-react';
+import { Menu, X, BookOpen, User, ClipboardList, School, History } from 'lucide-react';
 import { api } from '../services/mockDb';
 
 const Navbar: React.FC = () => {
@@ -12,6 +12,7 @@ const Navbar: React.FC = () => {
   const navLinks = [
     { name: 'Home', path: '/', icon: School },
     { name: 'Directory', path: '/directory', icon: User },
+    { name: 'Memories', path: '/memories', icon: History },
     { name: 'Resources', path: '/resources', icon: BookOpen },
     { name: 'Notices', path: '/notices', icon: ClipboardList },
     { name: 'Submit', path: '/submit', icon: null },
@@ -31,7 +32,6 @@ const Navbar: React.FC = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  // Don't show navbar on admin pages
   if (location.pathname.startsWith('/admin-portal-secure')) return null;
 
   return (

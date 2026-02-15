@@ -10,10 +10,12 @@ import {
   AuditLogEntry,
   CampusImage,
   SiteConfig,
-  Course
+  Course,
+  Achievement,
+  CampusMemory
 } from '../types';
 
-// Convert DataURI to Blob for uploading
+// Utility: Convert DataURI to Blob for Storage
 const dataURLtoBlob = (dataurl: string) => {
     const arr = dataurl.split(',');
     const match = arr[0].match(/:(.*?);/);
@@ -28,6 +30,9 @@ const dataURLtoBlob = (dataurl: string) => {
     return new Blob([u8arr], {type:mime});
 }
 
+// Utility: Generate a simple unique ID
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
 class SupabaseService {
   private currentUser: AdminUser | null = null;
   private sessionPromise: Promise<void> | null = null;
@@ -36,7 +41,6 @@ class SupabaseService {
     this.sessionPromise = this.restoreSession();
   }
 
-  // Changed to public so pages can await it
   public async restoreSession() {
     try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -54,59 +58,33 @@ class SupabaseService {
                token: session.access_token
            };
         } else if (token && token.startsWith('mock_token_')) {
-            // Restore from custom token
             const userId = token.replace('mock_token_', '');
-            
             try {
                 let dbUser = null;
-
-                // 1. Try to fetch by ID first
-                if (userId !== 'admin') {
-                    const { data } = await supabase.from('team_members').select('*').eq('id', userId).single();
-                    dbUser = data;
-                } 
+                const { data: byId } = await supabase.from('team_members').select('*').eq('id', userId).maybeSingle();
+                dbUser = byId;
                 
-                // 2. If it's the default 'admin' token, try to find the 'alex' user in DB first
-                if (userId === 'admin' && !dbUser) {
-                     const { data } = await supabase.from('team_members').select('*').eq('username', 'alex').single();
-                     dbUser = data;
+                if (!dbUser && (userId === 'admin' || userId === 'alex')) {
+                     const { data: byUsername } = await supabase.from('team_members').select('*').eq('username', 'alex').maybeSingle();
+                     dbUser = byUsername;
                 }
 
                 if (dbUser) {
                      this.currentUser = {
-                       id: dbUser.id, 
-                       username: dbUser.username,
-                       fullName: dbUser.fullName,
+                       ...dbUser,
                        role: dbUser.role as UserRole,
-                       title: dbUser.title,
-                       avatarUrl: dbUser.avatarUrl,
-                       activityScore: dbUser.activityScore,
-                       token: token,
-                       linkedStudentSlug: dbUser.linkedStudentSlug
-                    };
-                } else if (userId === 'admin') {
-                     // 3. Fallback ONLY if 'alex' is deleted from DB
-                     this.currentUser = {
-                       id: 'fallback-admin-id',
-                       username: 'alex',
-                       fullName: 'Ahamed Alex',
-                       role: UserRole.SUPER_ADMIN,
-                       title: 'Head of Operations',
-                       avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
-                       activityScore: 1500,
                        token: token
                     };
                 }
             } catch (err) {
-                console.error("Error restoring mock session", err);
+                console.error("Session restoration error", err);
             }
         }
     } catch (e) {
-        console.error("Session restore failed", e);
+        console.error("Restore session failed", e);
     }
   }
 
-  // --- Helpers ---
   private async logAction(action: string, target: string, details?: string) {
     if (!this.currentUser) return;
     try {
@@ -117,20 +95,19 @@ class SupabaseService {
             details,
             timestamp: new Date().toISOString()
         });
-    } catch(e) { console.error("Log failed", e); }
+    } catch(e) { console.error("Audit log failed", e); }
   }
 
-  // --- File Upload Helper ---
   async uploadFile(file: File | Blob | string, folder: string = 'general'): Promise<string> {
       let fileToUpload: File | Blob;
-      let fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      let fileName = `${Date.now()}_${generateId()}`;
 
       if (typeof file === 'string') {
           if (file.startsWith('data:')) {
               fileToUpload = dataURLtoBlob(file);
-              fileName += '.jpg'; // Assume jpg for base64
-              // Note: If PDF, this simple extension logic needs improvement in production, 
-              // but for this mock setup, we primarily handle images or rely on Supabase detection
+              const mime = file.split(';')[0].split(':')[1];
+              const ext = mime.split('/')[1] || 'bin';
+              fileName += `.${ext}`;
           } else {
               return file; // Already a URL
           }
@@ -139,14 +116,11 @@ class SupabaseService {
           if (file instanceof File) fileName += `_${file.name.replace(/[^a-zA-Z0-9.]/g, '')}`;
       }
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
           .from('public')
           .upload(`${folder}/${fileName}`, fileToUpload);
 
-      if (error) {
-          console.error("Storage upload error:", error);
-          throw new Error(`Upload failed: ${error.message}`);
-      }
+      if (error) throw new Error(`Upload failed: ${error.message}`);
       
       const { data: { publicUrl } } = supabase.storage
           .from('public')
@@ -155,202 +129,138 @@ class SupabaseService {
       return publicUrl;
   }
 
-  getCurrentUser() {
-      return this.currentUser;
-  }
+  getCurrentUser() { return this.currentUser; }
 
-  // --- Admin User / Team Management ---
+  // --- Admin User Management ---
   async getAdminUsers(): Promise<AdminUser[]> {
       const { data } = await supabase
         .from('team_members')
-        .select('id, fullName, username, title, role, avatarUrl, activityScore, linkedStudentSlug')
+        .select('*')
         .order('activityScore', {ascending: false});
       
-      let users = data?.map(u => ({
-          id: u.id,
-          username: u.username || 'user',
-          fullName: u.fullName,
-          title: u.title,
-          role: u.role as UserRole,
-          avatarUrl: u.avatarUrl,
-          activityScore: u.activityScore,
-          linkedStudentSlug: u.linkedStudentSlug
-      })) || [];
-
-      if (this.currentUser && this.currentUser.id === 'fallback-admin-id') {
-          const exists = users.find(u => u.username === 'alex'); 
-          if (!exists) {
-              users.push(this.currentUser);
-          }
-      }
-
-      return users;
+      return (data || []).map((u: any) => ({
+          ...u,
+          role: u.role as UserRole
+      }));
   }
 
   async createAdminUser(user: any): Promise<void> {
-      if (user.avatarUrl && user.avatarUrl.startsWith('data:')) {
-          user.avatarUrl = await this.uploadFile(user.avatarUrl, 'avatars');
-      }
-      
-      const { error } = await supabase.from('team_members').insert({
-          fullName: user.fullName,
-          username: user.username,
-          password: user.password,
-          title: user.title,
-          role: user.role,
-          avatarUrl: user.avatarUrl,
-          activityScore: 0
-      });
-      
-      if (error) throw new Error(error.message);
-      await this.logAction('Created Staff', user.fullName);
+    if (user.avatarUrl && user.avatarUrl.startsWith('data:')) {
+      user.avatarUrl = await this.uploadFile(user.avatarUrl, 'avatars');
+    }
+    const { error } = await supabase.from('team_members').insert(user);
+    if (error) throw error;
+    await this.logAction('Created Staff Account', user.username);
   }
 
   async deleteAdminUser(id: string): Promise<void> {
-      await supabase.from('team_members').delete().eq('id', id);
-      await this.logAction('Deleted Staff', id);
+    const { error } = await supabase.from('team_members').delete().eq('id', id);
+    if (error) throw error;
+    await this.logAction('Deleted Staff Account', id);
   }
 
   async updateAdminProfile(id: string, updates: Partial<AdminUser>): Promise<void> {
      if (updates.avatarUrl && updates.avatarUrl.startsWith('data:')) {
          updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
      }
-
-     if (id === 'fallback-admin-id') {
-        if (this.currentUser) {
-            this.currentUser = { ...this.currentUser, ...updates };
-             const { error } = await supabase.from('team_members')
-                .update({
-                    fullName: updates.fullName,
-                    title: updates.title,
-                    avatarUrl: updates.avatarUrl,
-                    linkedStudentSlug: updates.linkedStudentSlug
-                })
-                .eq('username', 'alex');
-             
-             if (!error) {
-                await this.logAction('Updated Profile', updates.fullName || 'Self');
-             }
-        }
-        return;
-     }
-
-     const { error } = await supabase.from('team_members').update({
-         fullName: updates.fullName,
-         title: updates.title,
-         avatarUrl: updates.avatarUrl,
-         linkedStudentSlug: updates.linkedStudentSlug
-     }).eq('id', id);
-
-     if(error) throw new Error(error.message);
-     
+     const { error } = await supabase.from('team_members').update(updates).eq('id', id);
+     if(error) throw error;
      if (this.currentUser && this.currentUser.id === id) {
          this.currentUser = { ...this.currentUser, ...updates };
      }
-     await this.logAction('Updated Profile', updates.fullName || 'Self');
+     await this.logAction('Updated Staff Profile', updates.fullName || id);
   }
 
   async changePassword(id: string, newPassword: string): Promise<void> {
-     if (id === 'fallback-admin-id') {
-         const { error } = await supabase.from('team_members')
-            .update({ password: newPassword })
-            .eq('username', 'alex');
-         if (error) throw new Error(error.message);
-     } else {
-         const { error } = await supabase.from('team_members')
-            .update({ password: newPassword })
-            .eq('id', id);
-         if (error) throw new Error(error.message);
-     }
-     await this.logAction('Changed Password', 'Self', 'User updated their security credentials');
+    const { error } = await supabase.from('team_members').update({ password: newPassword }).eq('id', id);
+    if (error) throw error;
+    await this.logAction('Changed Password', id);
   }
 
   // --- Student Management ---
   async getStudents(filter?: { dept?: string; intake?: string; search?: string }): Promise<Student[]> {
     let query = supabase.from('students').select('*');
-
     if (filter) {
       if (filter.dept && filter.dept !== 'All') query = query.eq('department', filter.dept);
       if (filter.intake && filter.intake !== 'All') query = query.ilike('intake', `%${filter.intake}%`);
-      if (filter.search) query = query.ilike('fullName', `%${filter.search}%`);
+      if (filter.search) query = query.or(`fullName.ilike.%${filter.search}%,bio.ilike.%${filter.search}%`);
     }
-
-    const { data, error } = await query;
-    if (error) {
-        console.error("Fetch students error:", error);
-        return [];
-    }
-
-    // Default processing for fields that might be missing in older records
-    return data.map((s: any) => ({
+    const { data } = await query;
+    return (data || []).map((s: any) => ({
         ...s,
         cgpa: s.cgpa || [],
-        courses: s.courses || []
-    })) as Student[];
+        courses: s.courses || [],
+        achievements: s.achievements || [],
+        galleryImages: s.galleryImages || []
+    }));
   }
 
   async getStudentBySlug(slug: string): Promise<Student | undefined> {
-    const { data } = await supabase.from('students').select('*').eq('slug', slug).single();
-    if(data) {
-        return {
-            ...data,
-            cgpa: data.cgpa || [],
-            courses: data.courses || []
-        };
-    }
-    return undefined;
+    const { data } = await supabase.from('students').select('*').eq('slug', slug).maybeSingle();
+    if(!data) return undefined;
+    return {
+        ...data,
+        cgpa: data.cgpa || [],
+        courses: data.courses || [],
+        achievements: data.achievements || [],
+        galleryImages: data.galleryImages || []
+    };
   }
 
   async updateStudent(id: string, updates: Partial<Student>): Promise<void> {
-      // 1. Handle File Uploads
       if (updates.avatarUrl && updates.avatarUrl.startsWith('data:')) {
           updates.avatarUrl = await this.uploadFile(updates.avatarUrl, 'avatars');
       }
 
       if (updates.galleryImages) {
-          const newGallery = [];
-          for (const img of updates.galleryImages) {
-              if (img.startsWith('data:')) {
-                  newGallery.push(await this.uploadFile(img, 'gallery'));
-              } else {
-                  newGallery.push(img);
-              }
-          }
-          updates.galleryImages = newGallery;
+          updates.galleryImages = await Promise.all(
+              updates.galleryImages.map(img => img.startsWith('data:') ? this.uploadFile(img, 'gallery') : img)
+          );
       }
 
-      // Handle Course Certificates
       if (updates.courses) {
-          const processedCourses: Course[] = [];
-          for (const course of updates.courses) {
-              let certUrl = course.certificateUrl;
-              if (certUrl && certUrl.startsWith('data:')) {
-                  certUrl = await this.uploadFile(certUrl, 'certificates');
-              }
-              processedCourses.push({ ...course, certificateUrl: certUrl });
-          }
-          updates.courses = processedCourses;
+          updates.courses = await Promise.all(
+              updates.courses.map(async (course) => {
+                  let certUrl = course.certificateUrl;
+                  if (certUrl && certUrl.startsWith('data:')) {
+                      certUrl = await this.uploadFile(certUrl, 'certificates');
+                  }
+                  return { ...course, id: course.id || generateId(), certificateUrl: certUrl };
+              })
+          );
       }
 
-      // 2. Perform Update
+      if (updates.achievements) {
+          updates.achievements = updates.achievements.map(a => ({ ...a, id: a.id || generateId() }));
+      }
+
       const { error } = await supabase.from('students').update(updates).eq('id', id);
-
-      if (error) {
-          console.error("Update failed", error);
-          throw new Error("Failed to update student profile. " + error.message);
-      }
+      if (error) throw error;
       await this.logAction('Updated Student', updates.fullName || id);
   }
 
   async incrementStudentViews(slug: string): Promise<void> {
-      try {
-        const { data } = await supabase.from('students').select('views').eq('slug', slug).single();
-        if (data) {
-            await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
-        }
-      } catch (e) {
-          console.warn("View increment skipped (RLS restricted)");
-      }
+    const { data } = await supabase.from('students').select('views').eq('slug', slug).maybeSingle();
+    if (data) {
+        await supabase.from('students').update({ views: (data.views || 0) + 1 }).eq('slug', slug);
+    }
+  }
+
+  async toggleStudentLock(id: string): Promise<void> {
+     const { data } = await supabase.from('students').select('isLocked').eq('id', id).maybeSingle();
+     if (data) {
+         await supabase.from('students').update({ isLocked: !data.isLocked }).eq('id', id);
+         await this.logAction('Toggled Student Lock', id, (!data.isLocked).toString());
+     }
+  }
+
+  async toggleStudentStatus(id: string): Promise<void> {
+     const { data } = await supabase.from('students').select('status').eq('id', id).maybeSingle();
+     if (data) {
+         const newStatus = data.status === 'suspended' ? 'active' : 'suspended';
+         await supabase.from('students').update({ status: newStatus }).eq('id', id);
+         await this.logAction('Toggled Student Status', id, newStatus);
+     }
   }
 
   async deleteStudent(id: string): Promise<void> {
@@ -358,169 +268,73 @@ class SupabaseService {
     await this.logAction('Deleted Student', id);
   }
 
-  async toggleStudentStatus(id: string): Promise<void> {
-     const { data } = await supabase.from('students').select('status').eq('id', id).single();
-     if (data) {
-         const newStatus = data.status === 'suspended' ? 'active' : 'suspended';
-         await supabase.from('students').update({ status: newStatus }).eq('id', id);
-         await this.logAction('Toggled Status', id, newStatus);
-     }
-  }
-
-  async toggleStudentLock(id: string): Promise<void> {
-     const { data } = await supabase.from('students').select('isLocked').eq('id', id).single();
-     if (data) {
-         const newLockState = !data.isLocked; 
-         const { error } = await supabase.from('students').update({ isLocked: newLockState }).eq('id', id);
-         if (error) throw new Error(error.message);
-         await this.logAction('Toggled Profile Security', id, newLockState ? 'Locked' : 'Unlocked');
-     }
-  }
-
-  // --- Notices Management ---
-  async getNotices(): Promise<Notice[]> { 
-    const { data } = await supabase.from('notices').select('*').order('isPinned', {ascending: false}).order('postedAt', {ascending: false});
-    return data || [];
-  }
-
-  async createNotice(notice: Omit<Notice, 'id' | 'postedAt'>): Promise<void> {
-    let attachmentUrl = notice.attachmentUrl;
-    if (attachmentUrl && attachmentUrl.startsWith('data:')) {
-        attachmentUrl = await this.uploadFile(attachmentUrl, 'notices');
-    }
-
-    await supabase.from('notices').insert({ ...notice, attachmentUrl });
-    await this.logAction('Posted Notice', notice.title);
-  }
-
-  async updateNotice(id: string, updates: Partial<Notice>): Promise<void> {
-    await supabase.from('notices').update(updates).eq('id', id);
-    await this.logAction('Updated Notice', updates.title || id);
-  }
-
-  async deleteNotice(id: string): Promise<void> {
-    await supabase.from('notices').delete().eq('id', id);
-    await this.logAction('Deleted Notice', id);
-  }
-
-  // --- Resources Management ---
-  async getResources(): Promise<Resource[]> { 
-      const { data } = await supabase.from('resources').select('*').order('uploadDate', {ascending: false});
+  // --- Campus Memory Management ---
+  async getMemories(): Promise<CampusMemory[]> {
+      const { data } = await supabase.from('campus_memories').select('*').order('year', { ascending: false }).order('date', { ascending: false });
       return data || [];
   }
 
-  async createResource(resource: any): Promise<void> {
-    let downloadUrl = resource.downloadUrl;
-    if (downloadUrl && downloadUrl.startsWith('data:')) {
-        downloadUrl = await this.uploadFile(downloadUrl, 'resources');
-    }
-
-    await supabase.from('resources').insert({ ...resource, downloadUrl });
-    await this.logAction('Uploaded Resource', resource.title);
+  async createMemory(memory: any): Promise<void> {
+      let images = memory.images || [];
+      const uploadedImages = await Promise.all(
+          images.map((img: string) => img.startsWith('data:') ? this.uploadFile(img, 'memories') : img)
+      );
+      await supabase.from('campus_memories').insert({ ...memory, images: uploadedImages });
+      await this.logAction('Added Memory', memory.title);
   }
 
-  async deleteResource(id: string): Promise<void> {
-    await supabase.from('resources').delete().eq('id', id);
-    await this.logAction('Deleted Resource', id);
-  }
-
-  // --- Campus Images ---
-  async getCampusImages(): Promise<CampusImage[]> {
-    const { data } = await supabase.from('campus_images').select('*').order('uploadedAt', {ascending: false});
-    return data || [];
-  }
-
-  async uploadCampusImage(fileOrBase64: File | string): Promise<void> {
-      const { count } = await supabase.from('campus_images').select('*', { count: 'exact', head: true });
-      if ((count || 0) >= 5) {
-          throw new Error("Maximum of 5 slides allowed.");
+  async updateMemory(id: string, updates: any): Promise<void> {
+      if (updates.images) {
+          updates.images = await Promise.all(
+              updates.images.map((img: string) => img.startsWith('data:') ? this.uploadFile(img, 'memories') : img)
+          );
       }
-
-      const url = await this.uploadFile(fileOrBase64, 'slideshow');
-      await supabase.from('campus_images').insert({ url });
-      await this.logAction('Uploaded Slide', 'Homepage');
+      await supabase.from('campus_memories').update(updates).eq('id', id);
+      await this.logAction('Updated Memory', updates.title || id);
   }
 
-  async deleteCampusImage(id: string): Promise<void> {
-      await supabase.from('campus_images').delete().eq('id', id);
-      await this.logAction('Deleted Slide', id);
+  async deleteMemory(id: string): Promise<void> {
+      await supabase.from('campus_memories').delete().eq('id', id);
+      await this.logAction('Deleted Memory', id);
   }
 
-  // --- Site Config ---
-  async getSiteConfig(): Promise<SiteConfig> {
-    const { data } = await supabase.from('site_config').select('*').eq('id', 1).single();
-    if (!data) return { logoUrl: null, contact: { address: '', email: '', phone: '' } };
-    return data;
-  }
-
-  async updateSiteConfig(config: SiteConfig): Promise<void> {
-      let logoUrl = config.logoUrl;
-      if (logoUrl && logoUrl.startsWith('data:')) {
-          logoUrl = await this.uploadFile(logoUrl, 'assets');
-      }
-
-      const { error } = await supabase.from('site_config').upsert({ 
-          id: 1, 
-          logoUrl: logoUrl, 
-          contact: config.contact 
-      });
-      if (error) throw error;
-      await this.logAction('Updated Config', 'Site Settings');
-  }
-
-  // --- Submissions ---
+  // --- Submission Management ---
   async getSubmissions(): Promise<Submission[]> {
     const { data } = await supabase.from('submissions').select('*').order('submittedAt', {ascending: false});
     return data || [];
   }
 
-  async createSubmission(submission: any): Promise<void> {
-    const content = { ...submission.content };
+  async createSubmission(sub: any): Promise<void> {
+    const content = { ...sub.content };
     
-    // Process File Uploads
-    if (content.avatarUrl?.startsWith('data:')) {
-        content.avatarUrl = await this.uploadFile(content.avatarUrl, 'avatars');
-    }
-    if (content.downloadUrl?.startsWith('data:')) {
-        content.downloadUrl = await this.uploadFile(content.downloadUrl, 'resources');
-    }
+    if (content.avatarUrl?.startsWith('data:')) content.avatarUrl = await this.uploadFile(content.avatarUrl, 'avatars');
+    if (content.downloadUrl?.startsWith('data:')) content.downloadUrl = await this.uploadFile(content.downloadUrl, 'resources');
+    
     if (content.galleryImages) {
-        const newGallery = [];
-        for (const img of content.galleryImages) {
-            if (img.startsWith('data:')) {
-                newGallery.push(await this.uploadFile(img, 'gallery'));
-            } else {
-                newGallery.push(img);
-            }
-        }
-        content.galleryImages = newGallery;
-    }
-    
-    // Process Course Certificates in Submission
-    if (content.courses) {
-        const processedCourses: Course[] = [];
-        for (const course of content.courses) {
-            let certUrl = course.certificateUrl;
-            if (certUrl && certUrl.startsWith('data:')) {
-                certUrl = await this.uploadFile(certUrl, 'certificates');
-            }
-            processedCourses.push({ ...course, certificateUrl: certUrl });
-        }
-        content.courses = processedCourses;
+        content.galleryImages = await Promise.all(
+            content.galleryImages.map((img: string) => img.startsWith('data:') ? this.uploadFile(img, 'gallery') : img)
+        );
     }
 
-    const { error } = await supabase.from('submissions').insert({ ...submission, content });
-    if (error) {
-        console.error("Submission insert error", error);
-        throw new Error(error.message);
+    if (content.courses) {
+        content.courses = await Promise.all(content.courses.map(async (c: any) => {
+            if (c.certificateUrl?.startsWith('data:')) c.certificateUrl = await this.uploadFile(c.certificateUrl, 'certificates');
+            return { ...c, id: generateId() };
+        }));
     }
+
+    if (content.achievements) {
+        content.achievements = content.achievements.map((a: any) => ({ ...a, id: a.id || generateId() }));
+    }
+
+    const { error } = await supabase.from('submissions').insert({ ...sub, content });
+    if (error) throw error;
   }
 
   async updateSubmissionStatus(id: string, status: 'approved' | 'rejected'): Promise<void> {
     await supabase.from('submissions').update({ status }).eq('id', id);
-    
     if (status === 'approved') {
-        const { data: sub } = await supabase.from('submissions').select('*').eq('id', id).single();
+        const { data: sub } = await supabase.from('submissions').select('*').eq('id', id).maybeSingle();
         if (sub && sub.type === 'biography') {
             await this.createStudentFromSubmission(sub);
         }
@@ -531,11 +345,11 @@ class SupabaseService {
   private async createStudentFromSubmission(sub: Submission) {
     const studentData = {
         fullName: sub.studentName,
-        slug: sub.studentName.toLowerCase().replace(/ /g, '-') + '-' + Date.now().toString().slice(-4),
+        slug: sub.studentName.toLowerCase().replace(/ /g, '-') + '-' + generateId(),
         department: sub.department,
-        intake: sub.content.intake || 'Batch 00', 
+        intake: sub.content.intake || 'N/A', 
         bio: sub.content.bio || '',
-        avatarUrl: sub.content.avatarUrl,
+        avatarUrl: sub.content.avatarUrl || 'https://via.placeholder.com/150',
         galleryImages: sub.content.galleryImages || [],
         achievements: sub.content.achievements || [],
         courses: sub.content.courses || [],
@@ -549,56 +363,89 @@ class SupabaseService {
     await supabase.from('students').insert(studentData);
   }
 
-  // --- Auth (UPDATED) ---
+  // --- Generic ---
   async login(username: string, password: string): Promise<AdminUser | null> {
-      const safeUsername = username.trim().toLowerCase();
-      
-      try {
-          const { data } = await supabase
-              .from('team_members')
-              .select('id, username, password, fullName, role, title, avatarUrl, activityScore, linkedStudentSlug')
-              .eq('username', safeUsername)
-              .single();
-
-          if (data) {
-              if (data.password === password) {
-                   this.currentUser = {
-                       id: data.id,
-                       username: data.username,
-                       fullName: data.fullName,
-                       role: data.role as UserRole,
-                       title: data.title,
-                       avatarUrl: data.avatarUrl,
-                       activityScore: data.activityScore,
-                       token: 'mock_token_' + data.id, 
-                       linkedStudentSlug: data.linkedStudentSlug
-                   };
-                   await this.logAction('Login', 'System', 'Successful Login');
-                   return this.currentUser;
-              }
-          }
-      } catch(e) { /* Ignore query error */ }
-
-      if (safeUsername === 'admin' && password === 'admin123') {
-           this.currentUser = {
-               id: 'fallback-admin-id',
-               username: 'alex',
-               fullName: 'Ahamed Alex',
-               role: UserRole.SUPER_ADMIN,
-               title: 'Head of Operations',
-               avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop',
-               activityScore: 1500,
-               token: 'mock_token_admin'
-           };
+      const { data } = await supabase.from('team_members').select('*').eq('username', username.toLowerCase().trim()).maybeSingle();
+      if (data && data.password === password) {
+           this.currentUser = { ...data, role: data.role as UserRole, token: 'mock_token_' + data.id };
+           await this.logAction('Admin Login', 'System');
            return this.currentUser;
       }
-      
       return null;
   }
 
   async getAuditLogs(): Promise<AuditLogEntry[]> { 
-      const { data } = await supabase.from('audit_logs').select('*').order('timestamp', {ascending: false});
+      const { data } = await supabase.from('audit_logs').select('*').order('timestamp', {ascending: false}).limit(100);
       return data || [];
+  }
+
+  async getNotices(): Promise<Notice[]> { 
+    const { data } = await supabase.from('notices').select('*').order('isPinned', {ascending: false}).order('postedAt', {ascending: false});
+    return data || [];
+  }
+
+  async createNotice(n: any): Promise<void> {
+    if (n.attachmentUrl?.startsWith('data:')) n.attachmentUrl = await this.uploadFile(n.attachmentUrl, 'notices');
+    await supabase.from('notices').insert(n);
+    await this.logAction('Posted Notice', n.title);
+  }
+
+  async updateNotice(id: string, updates: Partial<Notice>): Promise<void> {
+    if (updates.attachmentUrl && updates.attachmentUrl.startsWith('data:')) {
+      updates.attachmentUrl = await this.uploadFile(updates.attachmentUrl, 'notices');
+    }
+    const { error } = await supabase.from('notices').update(updates).eq('id', id);
+    if (error) throw error;
+    await this.logAction('Updated Notice', updates.title || id);
+  }
+
+  async deleteNotice(id: string): Promise<void> {
+    const { error } = await supabase.from('notices').delete().eq('id', id);
+    if (error) throw error;
+    await this.logAction('Deleted Notice', id);
+  }
+
+  async getResources(): Promise<Resource[]> { 
+      const { data } = await supabase.from('resources').select('*').order('uploadDate', {ascending: false});
+      return data || [];
+  }
+
+  async createResource(r: any): Promise<void> {
+    if (r.downloadUrl?.startsWith('data:')) r.downloadUrl = await this.uploadFile(r.downloadUrl, 'resources');
+    await supabase.from('resources').insert(r);
+    await this.logAction('Uploaded Resource', r.title);
+  }
+
+  async deleteResource(id: string): Promise<void> {
+    const { error } = await supabase.from('resources').delete().eq('id', id);
+    if (error) throw error;
+    await this.logAction('Deleted Resource', id);
+  }
+
+  async getCampusImages(): Promise<CampusImage[]> {
+    const { data } = await supabase.from('campus_images').select('*').order('uploadedAt', {ascending: false});
+    return data || [];
+  }
+
+  async uploadCampusImage(base64: string): Promise<void> {
+      const url = await this.uploadFile(base64, 'slideshow');
+      await supabase.from('campus_images').insert({ url });
+  }
+
+  async deleteCampusImage(id: string): Promise<void> {
+    const { error } = await supabase.from('campus_images').delete().eq('id', id);
+    if (error) throw error;
+    await this.logAction('Deleted Campus Image', id);
+  }
+
+  async getSiteConfig(): Promise<SiteConfig> {
+    const { data } = await supabase.from('site_config').select('*').eq('id', 1).maybeSingle();
+    return data || { logoUrl: null, contact: { address: '', email: '', phone: '' } };
+  }
+
+  async updateSiteConfig(c: SiteConfig): Promise<void> {
+      if (c.logoUrl?.startsWith('data:')) c.logoUrl = await this.uploadFile(c.logoUrl, 'assets');
+      await supabase.from('site_config').upsert({ id: 1, ...c });
   }
 }
 

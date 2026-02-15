@@ -9,6 +9,7 @@ import EditProfile from './pages/EditProfile';
 import Resources from './pages/Resources';
 import Notices from './pages/Notices';
 import Submit from './pages/Submit';
+import CampusMemory from './pages/CampusMemory';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 
@@ -30,6 +31,7 @@ function App() {
                 <Route path="/directory" element={<Directory />} />
                 <Route path="/directory/:slug" element={<StudentProfile />} />
                 <Route path="/edit-profile/:slug" element={<EditProfile />} />
+                <Route path="/memories" element={<CampusMemory />} />
                 <Route path="/resources" element={<Resources />} />
                 <Route path="/notices" element={<Notices />} />
                 <Route path="/submit" element={<Submit />} />

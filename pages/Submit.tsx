@@ -81,10 +81,10 @@ const Submit: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Size limit check (20MB)
-    const limit = 20 * 1024 * 1024;
+    // Standardized to 15MB
+    const limit = 15 * 1024 * 1024;
     if (file.size > limit) {
-      alert("File is too large. Max 20MB allowed.");
+      alert("File is too large. Max 15MB allowed.");
       return;
     }
 
@@ -126,7 +126,7 @@ const Submit: React.FC = () => {
         const cleanAchievements = achievements.filter(a => a.title?.trim() !== '') as Achievement[];
         
         // Clean courses: must have title and provider
-        const cleanCourses = courses.filter(c => c.title?.trim() !== '' && c.provider?.trim() !== '') as Course[];
+        const cleanCourses = courses.filter(c => c.title?.trim() !== ' ' && c.provider?.trim() !== '') as Course[];
         // Clean CGPA: remove empty entries for submission content
         const cleanCgpa = cgpa.filter(c => c.gpa !== '');
 
@@ -287,7 +287,7 @@ const Submit: React.FC = () => {
                             onChange={(e) => setBasicInfo({...basicInfo, resourceTitle: e.target.value})} 
                         />
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Upload File (PDF/Doc)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Upload File (PDF/Doc, Max 15MB)</label>
                           <input 
                             type="file" 
                             required 
@@ -376,7 +376,7 @@ const Submit: React.FC = () => {
                              </div>
                              
                              <div>
-                                 <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 20MB)</label>
+                                 <label className="block text-xs font-medium text-gray-500 mb-1">Certificate (PDF/JPG, Max 15MB)</label>
                                  <input 
                                     type="file"
                                     accept=".pdf,.jpg,.jpeg,.png"
@@ -409,7 +409,7 @@ const Submit: React.FC = () => {
                     </h3>
                     
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Profile Picture (Max 15MB)</label>
                       <input 
                         type="file"
                         accept="image/*"
@@ -422,7 +422,7 @@ const Submit: React.FC = () => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Gallery Images</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Gallery Images (Max 15MB each)</label>
                         {media.galleryImages.map((img, idx) => (
                             <div key={idx} className="flex gap-2 mb-2 items-center">
                                 <input 
