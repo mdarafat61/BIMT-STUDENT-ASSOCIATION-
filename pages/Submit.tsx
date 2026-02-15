@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload, AlertCircle, BookOpen, GraduationCap } from 'lucide-react';
+import { CheckCircle, Plus, Trash2, Image as ImageIcon, Link as LinkIcon, Award, User, Upload, AlertCircle, BookOpen, GraduationCap, FileCheck, File as FileIcon, X } from 'lucide-react';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { Department, SocialLink, Achievement, Course, SemesterCGPA } from '../types';
@@ -30,7 +29,7 @@ const Submit: React.FC = () => {
   });
 
   const [socials, setSocials] = useState<SocialLink[]>([{ platform: 'linkedin', url: '' }]);
-  const [achievements, setAchievements] = useState<Partial<Achievement>[]>([{ title: '', date: '', description: '' }]);
+  const [achievements, setAchievements] = useState<Partial<Achievement>[]>([{ title: '', date: '', description: '', attachmentUrl: '' }]);
   
   // New State for Courses and CGPA
   const [courses, setCourses] = useState<Partial<Course>[]>([{ title: '', provider: '', startDate: '', endDate: '', certificateUrl: '' }]);
@@ -77,7 +76,7 @@ const Submit: React.FC = () => {
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'resource' | 'gallery' | 'courseCert', index?: number) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'resource' | 'gallery' | 'courseCert' | 'achievementCert', index?: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -106,6 +105,12 @@ const Submit: React.FC = () => {
               const newCourses = [...prev];
               newCourses[index] = { ...newCourses[index], certificateUrl: base64 };
               return newCourses;
+          });
+      } else if (type === 'achievementCert' && typeof index === 'number') {
+          setAchievements(prev => {
+              const newAch = [...prev];
+              newAch[index] = { ...newAch[index], attachmentUrl: base64 };
+              return newAch;
           });
       }
     } catch (err) {
@@ -502,38 +507,68 @@ const Submit: React.FC = () => {
                     </h3>
                     
                     {achievements.map((ach, idx) => (
-                         <div key={idx} className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-2 relative">
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-2">
+                         <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-4 relative shadow-sm">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                                 <input
                                     type="text"
                                     placeholder="Award Title (e.g. Dean's List)"
-                                    className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                    className="rounded-lg border-gray-600 shadow-sm focus:ring-2 focus:ring-blue-500 sm:text-sm border p-2.5 bg-gray-800 text-white transition-all"
                                     value={ach.title}
                                     onChange={(e) => handleArrayChange(setAchievements, idx, 'title', e.target.value)}
                                 />
                                 <input
                                     type="date"
-                                    className="rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                    className="rounded-lg border-gray-600 shadow-sm focus:ring-2 focus:ring-blue-500 sm:text-sm border p-2.5 bg-gray-800 text-white transition-all"
                                     value={ach.date}
                                     onChange={(e) => handleArrayChange(setAchievements, idx, 'date', e.target.value)}
                                 />
                              </div>
                              <textarea
                                 rows={2}
-                                placeholder="Description"
-                                className="w-full rounded-md border-gray-600 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm border p-2 bg-gray-800 text-white"
+                                placeholder="Brief description of the achievement..."
+                                className="w-full rounded-lg border-gray-600 shadow-sm focus:ring-2 focus:ring-blue-500 sm:text-sm border p-2.5 bg-gray-800 text-white mb-3 transition-all"
                                 value={ach.description}
                                 onChange={(e) => handleArrayChange(setAchievements, idx, 'description', e.target.value)}
                              />
-                             <button type="button" onClick={() => handleRemoveRow(setAchievements, idx)} className="absolute top-2 right-2 text-red-500 hover:text-red-700">
+                             
+                             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                 <div className="flex-grow">
+                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Archive Verification (Image/PDF, Max 15MB)</label>
+                                     <div className="relative group">
+                                         <label className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border-2 border-dashed cursor-pointer transition-all ${ach.attachmentUrl ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-100 border-gray-200 text-gray-600 hover:border-blue-300 hover:bg-blue-50'}`}>
+                                             {ach.attachmentUrl ? <FileCheck className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                                             <span className="text-xs font-bold uppercase tracking-tight">
+                                                 {ach.attachmentUrl ? 'Document Attached' : 'Choose Verification File'}
+                                             </span>
+                                             <input 
+                                                type="file"
+                                                accept=".pdf,.jpg,.jpeg,.png"
+                                                className="hidden"
+                                                onChange={(e) => handleFileChange(e, 'achievementCert', idx)}
+                                             />
+                                         </label>
+                                         {ach.attachmentUrl && (
+                                             <button 
+                                                type="button" 
+                                                onClick={() => handleArrayChange(setAchievements, idx, 'attachmentUrl', '')}
+                                                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg hover:scale-110 transition-transform"
+                                             >
+                                                <X size={12}/>
+                                             </button>
+                                         )}
+                                     </div>
+                                 </div>
+                             </div>
+
+                             <button type="button" onClick={() => handleRemoveRow(setAchievements, idx)} className="absolute top-2 right-2 text-gray-300 hover:text-red-500 transition-colors p-1">
                                 <Trash2 size={16} />
                              </button>
                          </div>
                     ))}
                     <button 
                         type="button" 
-                        onClick={() => handleAddRow(setAchievements, { title: '', date: '', description: '' })}
-                        className="text-sm text-blue-600 font-medium flex items-center"
+                        onClick={() => handleAddRow(setAchievements, { title: '', date: '', description: '', attachmentUrl: '' })}
+                        className="text-sm text-blue-600 font-bold flex items-center hover:text-blue-700 transition-colors"
                     >
                         <Plus size={16} className="mr-1"/> Add Achievement
                     </button>

@@ -231,7 +231,15 @@ class SupabaseService {
       }
 
       if (updates.achievements) {
-          updates.achievements = updates.achievements.map(a => ({ ...a, id: a.id || generateId() }));
+          updates.achievements = await Promise.all(
+              updates.achievements.map(async (a) => {
+                  let attachUrl = a.attachmentUrl;
+                  if (attachUrl && attachUrl.startsWith('data:')) {
+                      attachUrl = await this.uploadFile(attachUrl, 'achievements');
+                  }
+                  return { ...a, id: a.id || generateId(), attachmentUrl: attachUrl };
+              })
+          );
       }
 
       const { error } = await supabase.from('students').update(updates).eq('id', id);
@@ -324,7 +332,10 @@ class SupabaseService {
     }
 
     if (content.achievements) {
-        content.achievements = content.achievements.map((a: any) => ({ ...a, id: a.id || generateId() }));
+        content.achievements = await Promise.all(content.achievements.map(async (a: any) => {
+            if (a.attachmentUrl?.startsWith('data:')) a.attachmentUrl = await this.uploadFile(a.attachmentUrl, 'achievements');
+            return { ...a, id: a.id || generateId() };
+        }));
     }
 
     const { error } = await supabase.from('submissions').insert({ ...sub, content });
